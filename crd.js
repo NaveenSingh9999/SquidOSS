@@ -230,13 +230,22 @@ async function start() {
     if (!pids.frontend || !isRunning(pids.frontend)) {
       log('Starting frontend dev server...')
       const pm = detectPM(ROOT)
-      const cmd = `nohup ${pm} run dev -- --host 0.0.0.0 </dev/null >/dev/null 2>&1 & echo $!`
+      const logFile = resolve(ROOT, 'frontend.log')
+      const cmd = `nohup ${pm} run dev -- --host 0.0.0.0 </dev/null >"${logFile}" 2>&1 & echo $!`
       const pidStr = execSync(cmd, { cwd: ROOT, encoding: 'utf-8' }).trim()
       const pid = parseInt(pidStr, 10)
       if (!isNaN(pid)) {
         pids.frontend = pid
         writePids(pids)
-        log(`Frontend starting (PID ${pid})`)
+        await new Promise(r => setTimeout(r, 4000))
+        // Check if it's actually running
+        if (isRunning(pid)) {
+          log(`Frontend running (PID ${pid})`)
+        } else {
+          warn(`Frontend failed to start. Check ${logFile}`)
+          delete pids.frontend
+          writePids(pids)
+        }
       }
     } else {
       log(`Frontend already running (PID ${pids.frontend})`)
@@ -247,13 +256,19 @@ async function start() {
     log('No frontend Vite config found, skipping frontend')
   }
 
-  // Read frontend port from vite config
+  // Read frontend port from vite config, then verify actual port
   let frontendPort = '5173'
   try {
-    const viteConfig = readFileSync(resolve(ROOT, 'vite.config.ts'), 'utf-8')
-    const portMatch = viteConfig.match(/port:\s*(\d+)/)
+    const vc = readFileSync(resolve(ROOT, 'vite.config.ts'), 'utf-8')
+    const portMatch = vc.match(/port:\s*(\d+)/)
     if (portMatch) frontendPort = portMatch[1]
   } catch {}
+  // Verify the port is actually responding; try alternatives if not
+  if (pids.frontend) {
+    const found = await out('ss', ['-tlnp', '2>/dev/null | grep -i vite || lsof -i -P -n 2>/dev/null | grep -i vite || true']).catch(() => '')
+    const portFound = found.match(/:(\d+)/)
+    if (portFound) frontendPort = portFound[1]
+  }
 
   log('SquidOSS is running')
   log(`  Backend:  http://localhost:3000`)
