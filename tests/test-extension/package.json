@@ -1,0 +1,16 @@
+{
+  "name": "test-extension",
+  "version": "1.0.0",
+  "description": "test",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "squidlab-sdk dev",
+    "build": "echo \"No build step\"",
+    "convert": "squidlab-sdk convert .",
+    "publish": "squidlab-sdk publish"
+  },
+  "dependencies": {
+    "squidlab-sdk": "^1.0.0"
+  },
+  "devDependencies": {}
+}

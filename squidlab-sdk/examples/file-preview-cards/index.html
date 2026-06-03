@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Preview Cards</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 24px 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .controls {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 20px 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 250px;
+      position: relative;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 12px 16px 12px 44px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+
+    .search-box input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #999;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 8px;
+      background: #f5f5f5;
+      padding: 4px;
+      border-radius: 10px;
+    }
+
+    .view-btn {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #666;
+      transition: all 0.2s ease;
+    }
+
+    .view-btn.active {
+      background: white;
+      color: #667eea;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 24px;
+    }
+
+    .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .file-card {
+      background: white;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .file-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+
+    .file-preview {
+      width: 100%;
+      height: 180px;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .file-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .file-preview-icon {
+      font-size: 64px;
+      opacity: 0.5;
+    }
+
+    .file-type-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .file-info {
+      padding: 16px;
+    }
+
+    .file-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .file-actions {
+      display: flex;
+      gap: 8px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .action-btn {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #e0e0e0;
+      background: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: #666;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .action-btn:hover {
+      background: #f8f9fa;
+      border-color: #667eea;
+      color: #667eea;
+    }
+
+    /* List View Styles */
+    .file-card.list-view {
+      display: flex;
+      flex-direction: row;
+      height: 80px;
+    }
+
+    .file-card.list-view .file-preview {
+      width: 120px;
+      height: 80px;
+    }
+
+    .file-card.list-view .file-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+    }
+
+    .file-card.list-view .file-details {
+      flex: 1;
+    }
+
+    .file-card.list-view .file-actions {
+      border: none;
+      padding: 0;
+      gap: 4px;
+    }
+
+    .file-card.list-view .action-btn {
+      width: 36px;
+      padding: 8px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: white;
+      font-size: 18px;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 16px;
+      margin-top: 24px;
+    }
+
+    .empty-state-icon {
+      font-size: 64px;
+      opacity: 0.3;
+      margin-bottom: 16px;
+    }
+
+    .empty-state h3 {
+      color: #1a1a1a;
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .error {
+      background: #fff3cd;
+      border: 2px solid #ffc107;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      color: #856404;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Image preview modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      max-width: 90%;
+      max-height: 90%;
+      position: relative;
+    }
+
+    .modal-content img {
+      max-width: 100%;
+      max-height: 90vh;
+      border-radius: 8px;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      background: white;
+      border: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📁 File Preview Cards</h1>
+      <p>Beautiful Google Drive-style file previews for your SquidCloud storage</p>
+    </div>
+
+    <div class="controls">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Search files...">
+      </div>
+      <div class="view-toggle">
+        <button class="view-btn active" data-view="grid">📇 Grid</button>
+        <button class="view-btn" data-view="list">📋 List</button>
+      </div>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <div>Loading your files...</div>
+    </div>
+
+    <div id="fileContainer" class="file-grid" style="display: none;"></div>
+    <div id="emptyState" class="empty-state" style="display: none;">
+      <div class="empty-state-icon">📂</div>
+      <h3>No files found</h3>
+      <p>Upload some files to see them here with beautiful previews</p>
+    </div>
+  </div>
+
+  <!-- Image Preview Modal -->
+  <div id="imageModal" class="modal">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closeModal()">×</button>
+      <img id="modalImage" src="" alt="Preview">
+    </div>
+  </div>
+
+  <script>
+    // Initialize SquidLab SDK
+    const squidLab = window.__SQUIDLAB_SDK__;
+    let allFiles = [];
+    let currentView = 'grid';
+    let searchQuery = '';
+
+    // File type icons and colors
+    const fileTypeConfig = {
+      'image': { icon: '🖼️', color: '#4CAF50', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'] },
+      'video': { icon: '🎬', color: '#2196F3', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm'] },
+      'audio': { icon: '🎵', color: '#9C27B0', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a'] },
+      'pdf': { icon: '📄', color: '#F44336', extensions: ['pdf'] },
+      'document': { icon: '📝', color: '#FF9800', extensions: ['doc', 'docx', 'txt', 'rtf', 'odt'] },
+      'spreadsheet': { icon: '📊', color: '#4CAF50', extensions: ['xls', 'xlsx', 'csv', 'ods'] },
+      'presentation': { icon: '📽️', color: '#E91E63', extensions: ['ppt', 'pptx', 'odp'] },
+      'code': { icon: '💻', color: '#607D8B', extensions: ['js', 'ts', 'html', 'css', 'json', 'xml', 'py', 'java', 'cpp'] },
+      'archive': { icon: '🗜️', color: '#795548', extensions: ['zip', 'rar', '7z', 'tar', 'gz'] },
+      'default': { icon: '📄', color: '#9E9E9E', extensions: [] }
+    };
+
+    function getFileType(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      for (const [type, config] of Object.entries(fileTypeConfig)) {
+        if (config.extensions.includes(ext)) {
+          return { type, ...config };
+        }
+      }
+      return { type: 'default', ...fileTypeConfig.default };
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function formatDate(dateString) {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffTime = Math.abs(now - date);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return 'Today';
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return date.toLocaleDateString();
+    }
+
+    async function getFilePreviewUrl(file) {
+      const fileInfo = getFileType(file.name);
+      
+      // For images, try to generate a preview
+      if (fileInfo.type === 'image') {
+        try {
+          // Use sqpreview to get a preview URL
+          const preview = await squidLab.sqpreview(file.id);
+          if (preview) return preview;
+        } catch (e) {
+          console.warn('Preview failed, using placeholder');
+        }
+      }
+      
+      return null;
+    }
+
+    function createFileCard(file, viewMode = 'grid') {
+      const fileInfo = getFileType(file.name);
+      const card = document.createElement('div');
+      card.className = `file-card ${viewMode === 'list' ? 'list-view' : ''}`;
+      
+      const isImage = fileInfo.type === 'image';
+      
+      card.innerHTML = `
+        <div class="file-preview" style="background: linear-gradient(135deg, ${fileInfo.color}22 0%, ${fileInfo.color}44 100%)">
+          ${isImage ? `<img src="" data-file-id="${file.id}" alt="${file.name}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">` : ''}
+          <div class="file-preview-icon" style="display: ${isImage ? 'none' : 'flex'}">${fileInfo.icon}</div>
+          <div class="file-type-badge" style="color: ${fileInfo.color}">${fileInfo.type}</div>
+        </div>
+        <div class="file-info">
+          <div class="file-details">
+            <div class="file-name" title="${file.name}">${file.name}</div>
+            <div class="file-meta">
+              <span>📦 ${formatFileSize(file.size)}</span>
+              <span>🕒 ${formatDate(file.created_at)}</span>
+            </div>
+          </div>
+          <div class="file-actions">
+            <button class="action-btn" onclick="downloadFile('${file.id}', '${file.name}')" title="Download">
+              ⬇️ ${viewMode === 'grid' ? 'Download' : ''}
+            </button>
+            <button class="action-btn" onclick="shareFile('${file.id}')" title="Share">
+              🔗 ${viewMode === 'grid' ? 'Share' : ''}
+            </button>
+            ${isImage ? `<button class="action-btn" onclick="openImageModal('${file.id}')" title="Preview">👁️ ${viewMode === 'grid' ? 'View' : ''}</button>` : ''}
+          </div>
+        </div>
+      `;
+      
+      // Load image preview asynchronously
+      if (isImage) {
+        const img = card.querySelector('img');
+        getFilePreviewUrl(file).then(url => {
+          if (url) {
+            img.src = url;
+            img.style.display = 'block';
+            img.nextElementSibling.style.display = 'none';
+          }
+        });
+      }
+      
+      return card;
+    }
+
+    async function loadFiles() {
+      const loading = document.getElementById('loading');
+      const container = document.getElementById('fileContainer');
+      const emptyState = document.getElementById('emptyState');
+      
+      loading.style.display = 'block';
+      container.style.display = 'none';
+      emptyState.style.display = 'none';
+      
+      try {
+        // Use sqfetch to get files
+        const result = await squidLab.sqfetch('/');
+        
+        if (result.success && result.data.files) {
+          allFiles = result.data.files;
+          renderFiles();
+        } else {
+          throw new Error('Failed to load files');
+        }
+      } catch (error) {
+        console.error('Error loading files:', error);
+        container.innerHTML = `
+          <div class="error">
+            <span>⚠️</span>
+            <div>
+              <strong>Error loading files</strong><br>
+              ${error.message || 'Please try again later'}
+            </div>
+          </div>
+        `;
+        container.style.display = 'block';
+      } finally {
+        loading.style.display = 'none';
+      }
+    }
+
+    function renderFiles() {
+      const container = document.getElementById('fileContainer');
+      const emptyState = document.getElementById('emptyState');
+      
+      // Filter files based on search query
+      let filteredFiles = allFiles;
+      if (searchQuery) {
+        filteredFiles = allFiles.filter(file => 
+          file.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+      
+      if (filteredFiles.length === 0) {
+        container.style.display = 'none';
+        emptyState.style.display = 'block';
+        return;
+      }
+      
+      container.innerHTML = '';
+      container.className = currentView === 'grid' ? 'file-grid' : 'file-list';
+      
+      filteredFiles.forEach(file => {
+        const card = createFileCard(file, currentView);
+        container.appendChild(card);
+      });
+      
+      container.style.display = currentView === 'grid' ? 'grid' : 'flex';
+      emptyState.style.display = 'none';
+    }
+
+    // Event handlers
+    async function downloadFile(fileId, fileName) {
+      try {
+        const blob = await squidLab.sqdownload(fileId);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        alert('✅ File downloaded successfully!');
+      } catch (error) {
+        alert('❌ Download failed: ' + error.message);
+      }
+    }
+
+    async function shareFile(fileId) {
+      try {
+        // Generate share link (this would use your share API)
+        const shareUrl = `${window.location.origin}/share/${fileId}`;
+        await navigator.clipboard.writeText(shareUrl);
+        alert('🔗 Share link copied to clipboard!');
+      } catch (error) {
+        alert('❌ Failed to copy link');
+      }
+    }
+
+    async function openImageModal(fileId) {
+      const modal = document.getElementById('imageModal');
+      const modalImg = document.getElementById('modalImage');
+      
+      try {
+        const blob = await squidLab.sqdownload(fileId);
+        const url = URL.createObjectURL(blob);
+        modalImg.src = url;
+        modal.classList.add('active');
+      } catch (error) {
+        alert('❌ Failed to load image preview');
+      }
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('imageModal');
+      modal.classList.remove('active');
+    }
+
+    // Search functionality
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      renderFiles();
+    });
+
+    // View toggle
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentView = btn.dataset.view;
+        renderFiles();
+      });
+    });
+
+    // Close modal on click outside
+    document.getElementById('imageModal').addEventListener('click', (e) => {
+      if (e.target.id === 'imageModal') {
+        closeModal();
+      }
+    });
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      loadFiles();
+    });
+  </script>
+</body>
+</html>

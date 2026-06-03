@@ -1,0 +1,2 @@
+const fs = require('fs');
+fs.writeFileSync('/workspaces/cloudbliss-storage/src/lib/res54-r2.ts', fs.readFileSync('/workspaces/cloudbliss-storage/src/lib/res54.ts', 'utf8').replace(/res54/g, 'res54_replace_me'));

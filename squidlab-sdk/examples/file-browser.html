@@ -1,0 +1,109 @@
+/**
+ * Example Extension 1: File Browser
+ * A simple file browsing extension
+ */
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Browser Extension</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/squidlab-sdk@latest/dist/index.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/squidlab-sdk@latest/dist/styles.css">
+  <style>
+    body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    const { SquidLab, Card, Table, Badge, formatFileSize, formatDate } = window.SquidLabSDK;
+    const { useState, useEffect } = React;
+
+    // Initialize SDK (config will be injected by SquidCloud)
+    const config = window.__SQUIDLAB_CONFIG__ || {
+      manifest: {
+        name: 'file-browser',
+        version: '1.0.0',
+        permissions: ['files.read']
+      },
+      apiKey: 'demo-key',
+      userId: 'demo-user'
+    };
+
+    const squidLab = new SquidLab(config);
+
+    function FileBrowserApp() {
+      const [files, setFiles] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [stats, setStats] = useState({ total: 0, totalSize: 0 });
+
+      useEffect(() => {
+        loadFiles();
+      }, []);
+
+      const loadFiles = async () => {
+        setLoading(true);
+        const result = await squidLab.listFiles();
+        
+        if (result.success) {
+          setFiles(result.data);
+          const total = result.data.length;
+          const totalSize = result.data.reduce((sum, f) => sum + f.size, 0);
+          setStats({ total, totalSize });
+        }
+        setLoading(false);
+      };
+
+      const columns = [
+        { 
+          key: 'name', 
+          header: 'Name',
+          render: (file) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>{file.name}</span>
+              {file.type.startsWith('image/') && <Badge variant="info" size="sm">Image</Badge>}
+              {file.type.includes('pdf') && <Badge variant="error" size="sm">PDF</Badge>}
+            </div>
+          )
+        },
+        { 
+          key: 'size', 
+          header: 'Size',
+          render: (file) => formatFileSize(file.size)
+        },
+        { 
+          key: 'type', 
+          header: 'Type'
+        },
+        { 
+          key: 'created_at', 
+          header: 'Created',
+          render: (file) => formatDate(file.created_at)
+        }
+      ];
+
+      if (loading) {
+        return <Card title="File Browser"><p>Loading files...</p></Card>;
+      }
+
+      return (
+        <div>
+          <Card 
+            title="File Browser" 
+            subtitle={`${stats.total} files • ${formatFileSize(stats.totalSize)} total`}
+          >
+            <Table columns={columns} data={files} />
+          </Card>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<FileBrowserApp />, document.getElementById('root'));
+  </script>
+</body>
+</html>

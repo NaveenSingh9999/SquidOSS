@@ -1,0 +1,630 @@
+/* Import Geist font family */
+@import '@fontsource/geist-sans/400.css';
+@import '@fontsource/geist-sans/500.css';
+@import '@fontsource/geist-sans/600.css';
+@import '@fontsource/geist-sans/700.css';
+@import '@fontsource/geist-mono/400.css';
+@import '@fontsource/geist-mono/500.css';
+
+/* Import premium design system */
+@import './styles/premium-motion.css';
+@import './styles/premium-spacing.css';
+@import './styles/squircle.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+  
+  :root {
+    /* ── Light Theme ─────────────────────────────── */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11.2%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11.2%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11.2%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222 47% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222 47% 11.2%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5% 26%;
+    --sidebar-primary: 240 6% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 240 6% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217 91% 60%;
+
+    /* ── Semantic Status Colors ──────────────────── */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
+    /* ── Squidset Design System Colors ───────────── */
+    --squid-blue-50: 214 100% 97%;
+    --squid-blue-100: 214 95% 93%;
+    --squid-blue-200: 213 97% 87%;
+    --squid-blue-300: 212 96% 78%;
+    --squid-blue-400: 213 94% 68%;
+    --squid-blue-500: 217 91% 60%;
+    --squid-blue-600: 221 83% 53%;
+    --squid-blue-700: 224 76% 48%;
+    --squid-blue-800: 226 71% 40%;
+    --squid-blue-900: 224 64% 33%;
+    
+    --squid-gray-50: 210 20% 98%;
+    --squid-gray-100: 220 14% 96%;
+    --squid-gray-200: 220 13% 91%;
+    --squid-gray-300: 216 12% 84%;
+    --squid-gray-400: 218 11% 65%;
+    --squid-gray-500: 220 9% 46%;
+    --squid-gray-600: 215 14% 34%;
+    --squid-gray-700: 217 19% 27%;
+    --squid-gray-800: 215 28% 17%;
+    --squid-gray-900: 221 39% 11%;
+
+    --squid-error: 0 84% 60%;
+    --squid-success: 142 71% 45%;
+    --squid-warning: 38 92% 50%;
+
+    /* ── Typography Scale ─────────────────────────── */
+    --font-size-xs: 0.6875rem;     /* 11px */
+    --font-size-sm: 0.8125rem;     /* 13px */
+    --font-size-base: 0.9375rem;   /* 15px — body base */
+    --font-size-md: 1rem;          /* 16px */
+    --font-size-lg: 1.125rem;      /* 18px */
+    --font-size-xl: 1.25rem;       /* 20px */
+    --font-size-2xl: 1.5rem;       /* 24px */
+    --font-size-3xl: 1.875rem;     /* 30px */
+
+    /* Typography weights */
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+
+    /* Line heights */
+    --line-height-tight: 1.25;
+    --line-height-snug: 1.375;
+    --line-height-normal: 1.6;
+    --line-height-relaxed: 1.75;
+
+    /* Letter spacing */
+    --letter-spacing-tight: -0.02em;
+    --letter-spacing-normal: -0.01em;
+    --letter-spacing-wide: 0.01em;
+
+    /* ── Elevation Scale (light) ──────────────────── */
+    --elevation-1: 0 1px 2px hsl(222 47% 11% / 0.04);
+    --elevation-2: 0 2px 4px hsl(222 47% 11% / 0.06), 0 1px 2px hsl(222 47% 11% / 0.04);
+    --elevation-3: 0 4px 8px hsl(222 47% 11% / 0.08), 0 2px 4px hsl(222 47% 11% / 0.04);
+    --elevation-4: 0 8px 16px hsl(222 47% 11% / 0.1), 0 4px 8px hsl(222 47% 11% / 0.05);
+    --elevation-5: 0 16px 32px hsl(222 47% 11% / 0.12), 0 8px 16px hsl(222 47% 11% / 0.06);
+  }
+
+  .dark {
+    /* ── Dark Theme — Refined SaaS (lightened by 4%) ────────────────── */
+    --background: 222 47% 9.5%;   /* was 5.5%, now 9.5% - lightened by 4% */
+    --foreground: 210 20% 96%;
+
+    --card: 222 35% 11.5%;         /* was 7.5%, now 11.5% - lightened by 4% */
+    --card-foreground: 210 20% 96%;
+
+    --popover: 222 38% 12%;        /* was 8%, now 12% - lightened by 4% */
+    --popover-foreground: 210 20% 96%;
+
+    --primary: 217 92% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 25% 16%;      /* was 12%, now 16% - lightened by 4% */
+    --secondary-foreground: 210 20% 92%;
+
+    --muted: 220 20% 17%;          /* was 13%, now 17% - lightened by 4% */
+    --muted-foreground: 215 12% 56%; /* was 50%, increased by 6% for better clarity */
+
+    --accent: 220 22% 15%;         /* was 11%, now 15% - lightened by 4% */
+    --accent-foreground: 210 20% 96%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 18% 17%;         /* was 13%, now 17% - lightened by 4% */
+    --input: 220 20% 14%;          /* was 10%, now 14% - lightened by 4% */
+    --ring: 217 92% 60%;
+
+    --sidebar-background: 222 40% 9%; /* was 5%, now 9% - lightened by 4% */
+    --sidebar-foreground: 210 15% 90%;
+    --sidebar-primary: 217 92% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 22% 13%;   /* was 9%, now 13% - lightened by 4% */
+    --sidebar-accent-foreground: 210 15% 90%;
+    --sidebar-border: 220 18% 15%;   /* was 11%, now 15% - lightened by 4% */
+    --sidebar-ring: 217 92% 60%;
+
+    /* ── Elevation Scale (dark) ────────────────────── */
+    --elevation-1: 0 1px 2px hsl(0 0% 0% / 0.15);
+    --elevation-2: 0 2px 4px hsl(0 0% 0% / 0.2), 0 1px 2px hsl(0 0% 0% / 0.15);
+    --elevation-3: 0 4px 8px hsl(0 0% 0% / 0.25), 0 2px 4px hsl(0 0% 0% / 0.15);
+    --elevation-4: 0 8px 16px hsl(0 0% 0% / 0.3), 0 4px 8px hsl(0 0% 0% / 0.15);
+    --elevation-5: 0 16px 32px hsl(0 0% 0% / 0.4), 0 8px 16px hsl(0 0% 0% / 0.2);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: hsl(var(--background));
+}
+
+/* Mobile-specific background fix */
+@media (max-width: 768px) {
+  body {
+    background: #0a0a12; /* AMOLED-optimized dark background */
+  }
+  
+  /* Fix any white edges on mobile */
+  html, body {
+    background: #0a0a12;
+    min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport height for mobile */
+    width: 100%;
+    overflow-x: hidden;
+  }
+  
+  /* Ensure main container covers full screen */
+  .container {
+    background: #0a0a12;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
+/* Safe area utilities for mobile devices */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-area-pt {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-pl {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-area-pr {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Font and touch optimization */
+body {
+  @apply bg-background text-foreground;
+  font-family: 'Geist Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  letter-spacing: var(--letter-spacing-normal);
+  font-weight: var(--font-weight-normal);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  touch-action: pan-x pan-y;
+  -ms-touch-action: pan-x pan-y;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* Mobile subtle accent - minimal gradient for depth */
+  @media (max-width: 768px) {
+    body {
+      background: 
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 189, 248, 0.03), transparent);
+      background-attachment: fixed;
+    }
+  }
+
+  /* Disable context menu (right-click) globally but allow it on file items */
+  body {
+    -webkit-context-menu: none;
+    -moz-context-menu: none;
+    /* context-menu: none; */ /* Commented out as it's not a standard CSS property */
+  }
+
+  /* Custom scrollbar styling */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted)) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted));
+    border-radius: 3px;
+    border: 1px solid transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground));
+  }
+
+  /* File grid area - allow context menu */
+  .file-grid-area {
+    -webkit-context-menu: auto;
+    -moz-context-menu: auto;
+    /* context-menu: auto; */ /* Commented out as it's not a standard CSS property */
+  }
+
+@layer components {
+  /* ── Glass Surface — used sparingly for nav/overlays ── */
+  .glass-surface {
+    background: hsl(var(--card) / 0.8);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+  
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-lg border border-border/30 shadow-sm rounded-xl;
+  }
+  
+  .glass-button {
+    @apply bg-accent/60 backdrop-blur hover:bg-accent/80 text-foreground border border-border/30 shadow-sm transition-all rounded-lg;
+  }
+
+  /* ── Upload Zone ── */
+  .liquid-glass-upload-zone {
+    background: hsl(var(--muted) / 0.5);
+    border: 2px dashed hsl(var(--border));
+    border-radius: var(--radius-lg, 12px);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  .liquid-glass-upload-zone.drag-over {
+    background: hsl(var(--primary) / 0.08);
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+  }
+
+  /* Legacy liquid-glass classes — thin wrappers for backward compat */
+  .liquid-glass-surface { @apply glass-surface; border-radius: 1rem; }
+  .liquid-glass-card { @apply glass-card; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+  .liquid-glass-card:hover { box-shadow: var(--elevation-3); }
+  .liquid-glass-nav { @apply glass-surface; }
+  .liquid-glass-button { @apply glass-button; }
+  .liquid-glass-button:hover { @apply bg-accent; }
+  .liquid-glass-button:active { transform: scale(0.97); }
+  .liquid-glass-tab { @apply glass-button text-sm font-medium px-4 py-2; }
+  .liquid-glass-tab-active {
+    background: hsl(var(--primary) / 0.12);
+    border-color: hsl(var(--primary) / 0.25);
+    color: hsl(var(--primary));
+  }
+  .liquid-glass-floating { @apply glass-surface fixed; }
+  .liquid-glass-glow { position: relative; }
+  .liquid-glass-ios { @apply glass-card; border-radius: 1.5rem; }
+  .liquid-glass-ios:hover { box-shadow: var(--elevation-4); transform: translateY(-1px); }
+  .liquid-glass-pill { @apply glass-button rounded-full; }
+  .liquid-glass-pill:hover { @apply bg-accent; }
+  .liquid-glass-input { @apply bg-input border border-border rounded-lg; transition: all 0.15s ease; }
+  .liquid-glass-input:focus { border-color: hsl(var(--primary) / 0.5); box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1); }
+  .liquid-glass-code { @apply bg-muted/50 border border-border/50 rounded-lg; }
+  .liquid-glass-table { @apply bg-card/50 border border-border/30; }
+  .liquid-glass-active {
+    background: hsl(var(--primary) / 0.12);
+    border-color: hsl(var(--primary) / 0.25);
+  }
+
+  /* ── Material compat ── */
+  .material-card { @apply bg-card rounded-xl border border-border/50; box-shadow: var(--elevation-1); transition: all 0.2s ease; }
+  .material-card:hover { box-shadow: var(--elevation-2); transform: translateY(-1px); }
+  .material-card-elevated { @apply bg-card rounded-xl; box-shadow: var(--elevation-3); }
+  .sandwich-tab { @apply relative px-5 py-2.5 rounded-lg font-medium transition-all duration-200 hover:bg-accent; }
+  .sandwich-tab-active { @apply bg-card shadow-sm; }
+  .sandwich-tab-active::after { content: ''; @apply absolute bottom-0 left-1/2 -translate-x-1/2; width: 40%; height: 2px; background: hsl(var(--primary)); border-radius: 1px; }
+
+  .animate-enter { opacity: 0; animation: enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  .text-balance { text-wrap: balance; }
+
+  /* Info sidebar styles */
+  .info-sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted)) transparent;
+    overflow-y: auto;
+    max-height: 70vh;
+  }
+
+  /* Context menu styles */
+  .context-menu {
+    background: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    z-index: 9999 !important;
+  }
+
+  /* Dropdown menu z-index fix */
+  [data-radix-popper-content-wrapper] {
+    z-index: 9999 !important;
+  }
+
+  /* Ultra-wide responsive grid */
+  .ultra-wide-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+  
+  @media (min-width: 1920px) {
+    .ultra-wide-grid {
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+  }
+  
+  @media (min-width: 2560px) {
+    .ultra-wide-grid {
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 2rem;
+    }
+  }
+
+  /* Responsive container adjustments */
+  .responsive-container {
+    max-width: 100%;
+  }
+  
+  @media (min-width: 1920px) {
+    .responsive-container {
+      max-width: 85%;
+    }
+  }
+  
+  @media (min-width: 2560px) {
+    .responsive-container {
+      max-width: 80%;
+    }
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#root {
+  max-width: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.has-bottom-nav {
+  padding-bottom: 5rem;
+}
+
+/* Apple macOS-style circular loader animations */
+@keyframes apple-loader-fade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.2;
+  }
+}
+
+.apple-loader-dot {
+  animation: apple-loader-fade 1.2s ease-in-out infinite;
+}
+
+.apple-loader {
+  animation: spin 1.2s linear infinite;
+}
+
+/* Mobile UI Micro-animations */
+@keyframes icon-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(13, 148, 136, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(13, 148, 136, 0.6);
+  }
+}
+
+@keyframes slide-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes haptic-bounce {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.icon-bounce {
+  animation: icon-bounce 0.6s ease-in-out;
+}
+
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.slide-fade-in {
+  animation: slide-fade-in 0.3s ease-out;
+}
+
+.haptic-bounce {
+  animation: haptic-bounce 0.3s ease-out;
+}
+
+/* Smooth backdrop blur */
+.backdrop-blur-smooth {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* Mobile File Menu Animations */
+@keyframes slideInFromBottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInBackdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.mobile-menu-backdrop {
+  animation: fadeInBackdrop 0.2s ease-out;
+}
+
+.mobile-menu-content {
+  animation: slideInFromBottom 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mobile-menu-item {
+  animation: scaleIn 0.2s ease-out;
+  animation-fill-mode: both;
+}
+
+/* Safe area support for iPhones */
+.h-safe-area-inset-bottom {
+  height: env(safe-area-inset-bottom, 0px);
+}
+
+/* Enhanced mobile touch interactions */
+.mobile-touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  touch-action: manipulation;
+}
+
+.mobile-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.mobile-ripple::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.mobile-ripple:active::after {
+  width: 300px;
+  height: 300px;
+}
+/* Recency Fade — fresh upload dot pulse */
+@keyframes freshPulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.75); }
+}

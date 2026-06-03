@@ -1,0 +1,34 @@
+
+{
+  "name": "SquidCloud",
+  "short_name": "SquidCloud",
+  "description": "Secure cloud storage with encryption and organization",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2563eb",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Upload File",
+      "short_name": "Upload",
+      "description": "Upload a new file",
+      "url": "/?upload=true",
+      "icons": [{ "src": "/favicon.ico", "sizes": "32x32" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View your dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/favicon.ico", "sizes": "32x32" }]
+    }
+  ]
+}

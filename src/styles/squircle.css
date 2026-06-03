@@ -1,0 +1,215 @@
+/**
+ * SquidCloud Squircle System
+ * G2 continuous curvature shapes — Apple-style superellipse approximation
+ * Uses scaled border-radius with precise ratios to mimic iOS/macOS squircles
+ */
+
+:root {
+  /* Squircle radius scale — multiplier ≈ 0.4472 of element size */
+  --sq-xs:  6px;
+  --sq-sm:  10px;
+  --sq-md:  14px;
+  --sq-lg:  20px;
+  --sq-xl:  28px;
+  --sq-2xl: 36px;
+  --sq-3xl: 48px;
+
+  /* Transition */
+  --sq-transition: border-radius 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Core Squircle Classes ─────────────────────────────── */
+
+.squircle-xs  { border-radius: var(--sq-xs) !important; }
+.squircle-sm  { border-radius: var(--sq-sm) !important; }
+.squircle-md  { border-radius: var(--sq-md) !important; }
+.squircle-lg  { border-radius: var(--sq-lg) !important; }
+.squircle-xl  { border-radius: var(--sq-xl) !important; }
+.squircle-2xl { border-radius: var(--sq-2xl) !important; }
+.squircle-3xl { border-radius: var(--sq-3xl) !important; }
+
+/* ─── SVG Clip-path Squircle (true G2 superellipse) ────── */
+/* Use on fixed-size elements where exact shape matters     */
+
+.squircle-clip-sm {
+  clip-path: url(#squircle-sm);
+}
+.squircle-clip-md {
+  clip-path: url(#squircle-md);
+}
+.squircle-clip-lg {
+  clip-path: url(#squircle-lg);
+}
+
+/* ─── Button Squircle Overrides ─────────────────────────── */
+
+button,
+[role="button"],
+.btn {
+  border-radius: var(--sq-sm) !important;
+}
+
+button.btn-sm,
+.h-8,
+[class*="h-8"] button {
+  border-radius: var(--sq-xs) !important;
+}
+
+button.btn-lg,
+.h-11,
+.h-12 {
+  border-radius: var(--sq-md) !important;
+}
+
+/* Icon-only buttons */
+button[class*="w-9"][class*="h-9"],
+button[class*="w-8"][class*="h-8"],
+button[class*="icon"] {
+  border-radius: var(--sq-sm) !important;
+}
+
+/* ─── Input Squircle Overrides ──────────────────────────── */
+
+input,
+textarea,
+select,
+[class*="input"],
+[class*="Input"] {
+  border-radius: var(--sq-sm) !important;
+}
+
+/* Search inputs — slightly more pronounced */
+input[type="search"],
+input[placeholder*="Search"],
+input[placeholder*="search"] {
+  border-radius: var(--sq-md) !important;
+}
+
+/* ─── Dialog / Modal Squircle ───────────────────────────── */
+
+[role="dialog"] > div,
+[data-radix-dialog-content],
+[data-state="open"][class*="DialogContent"],
+.dialog-content {
+  border-radius: var(--sq-xl) !important;
+}
+
+/* Mobile bottom-sheet style keeps top radius */
+[class*="bottom-0"][class*="rounded-t"] {
+  border-radius: var(--sq-2xl) var(--sq-2xl) 0 0 !important;
+}
+
+/* ─── Toast Squircle ─────────────────────────────────────── */
+
+[data-radix-toast-root],
+[class*="ToastRoot"],
+[class*="toast"],
+li[class*="toast"] {
+  border-radius: var(--sq-lg) !important;
+}
+
+/* Toast close button */
+[class*="ToastClose"] button,
+[toast-close] {
+  border-radius: var(--sq-sm) !important;
+}
+
+/* ─── Card / Panel Squircle ──────────────────────────────── */
+
+.card,
+[class*="rounded-xl"],
+[class*="rounded-2xl"],
+[class*="rounded-lg"] {
+  /* Let component-level classes handle this */
+}
+
+/* Specific card-like containers */
+[class*="bg-card"],
+[class*="glass-card"] {
+  border-radius: var(--sq-lg) !important;
+}
+
+/* ─── Dropdown / Popover Squircle ───────────────────────── */
+
+[data-radix-popper-content-wrapper] > div,
+[class*="DropdownMenuContent"],
+[class*="PopoverContent"],
+[class*="SelectContent"],
+[class*="ContextMenuContent"] {
+  border-radius: var(--sq-md) !important;
+}
+
+[class*="DropdownMenuItem"],
+[class*="ContextMenuItem"] {
+  border-radius: var(--sq-xs) !important;
+}
+
+/* ─── Badge Squircle ─────────────────────────────────────── */
+
+[class*="badge"],
+[class*="Badge"] {
+  border-radius: var(--sq-xs) !important;
+}
+
+/* Pill badges */
+[class*="rounded-full"][class*="badge"],
+[class*="rounded-full"][class*="Badge"] {
+  border-radius: var(--sq-3xl) !important;
+}
+
+/* ─── Progress Squircle ──────────────────────────────────── */
+
+[role="progressbar"],
+[class*="Progress"] {
+  border-radius: var(--sq-xs) !important;
+}
+
+[class*="Progress"] > * {
+  border-radius: var(--sq-xs) !important;
+}
+
+/* ─── Avatar Squircle ────────────────────────────────────── */
+
+/* Squircle avatar option — add class .avatar-squircle */
+.avatar-squircle {
+  border-radius: var(--sq-md) !important;
+  overflow: hidden;
+}
+
+/* ─── Sidebar Item Squircle ──────────────────────────────── */
+
+nav button,
+nav a,
+[data-sidebar] button {
+  border-radius: var(--sq-sm) !important;
+}
+
+/* ─── Focus Ring Squircle ────────────────────────────────── */
+
+*:focus-visible {
+  border-radius: var(--sq-sm);
+}
+
+/* ─── Skeleton Squircle ──────────────────────────────────── */
+
+[class*="skeleton"],
+[class*="Skeleton"] {
+  border-radius: var(--sq-sm) !important;
+}
+
+/* ─── Checkbox Squircle ──────────────────────────────────── */
+
+[type="checkbox"],
+[role="checkbox"],
+[class*="checkbox"],
+[class*="Checkbox"] {
+  border-radius: var(--sq-xs) !important;
+}
+
+/* ─── Switch Squircle ────────────────────────────────────── */
+
+[role="switch"],
+[class*="switch"],
+[class*="Switch"] {
+  border-radius: var(--sq-3xl) !important; /* pill stays pill */
+}

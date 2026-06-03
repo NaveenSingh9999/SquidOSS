@@ -1,0 +1,155 @@
+/**
+ * Example Extension 2: Storage Analytics
+ * Visualize storage usage and file statistics
+ */
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Storage Analytics Extension</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/squidlab-sdk@latest/dist/index.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/squidlab-sdk@latest/dist/styles.css">
+  <style>
+    body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background: white; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #1f2937; }
+    .stat-label { font-size: 14px; color: #6b7280; margin-top: 4px; }
+    .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+    .progress-fill { height: 100%; background: linear-gradient(to right, #3b82f6, #2563eb); transition: width 0.3s; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    const { SquidLab, Card, Badge, formatFileSize } = window.SquidLabSDK;
+    const { useState, useEffect } = React;
+
+    const config = window.__SQUIDLAB_CONFIG__ || {
+      manifest: {
+        name: 'storage-analytics',
+        version: '1.0.0',
+        permissions: ['files.read', 'storage.quota']
+      },
+      apiKey: 'demo-key',
+      userId: 'demo-user'
+    };
+
+    const squidLab = new SquidLab(config);
+
+    function StorageAnalyticsApp() {
+      const [quota, setQuota] = useState(null);
+      const [analytics, setAnalytics] = useState({
+        totalFiles: 0,
+        totalSize: 0,
+        byType: {},
+        largestFile: null,
+        averageSize: 0
+      });
+
+      useEffect(() => {
+        loadData();
+      }, []);
+
+      const loadData = async () => {
+        // Load storage quota
+        const quotaResult = await squidLab.getStorageQuota();
+        if (quotaResult.success) {
+          setQuota(quotaResult.data);
+        }
+
+        // Load files for analytics
+        const filesResult = await squidLab.listFiles();
+        if (filesResult.success) {
+          const files = filesResult.data;
+          const totalFiles = files.length;
+          const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+          
+          // Group by type
+          const byType = {};
+          files.forEach(f => {
+            const type = f.type.split('/')[0] || 'other';
+            byType[type] = (byType[type] || 0) + 1;
+          });
+
+          // Find largest file
+          const largestFile = files.reduce((max, f) => 
+            !max || f.size > max.size ? f : max, null
+          );
+
+          setAnalytics({
+            totalFiles,
+            totalSize,
+            byType,
+            largestFile,
+            averageSize: totalSize / totalFiles || 0
+          });
+        }
+      };
+
+      return (
+        <div>
+          <Card title="Storage Analytics" subtitle="Visualize your storage usage">
+            {quota && (
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span>Storage Used</span>
+                  <span><strong>{quota.percentage}%</strong></span>
+                </div>
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width: `${quota.percentage}%` }}></div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '14px', color: '#6b7280' }}>
+                  <span>{formatFileSize(quota.used)}</span>
+                  <span>{formatFileSize(quota.total)} total</span>
+                </div>
+              </div>
+            )}
+
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-value">{analytics.totalFiles}</div>
+                <div className="stat-label">Total Files</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">{formatFileSize(analytics.totalSize)}</div>
+                <div className="stat-label">Total Size</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">{formatFileSize(analytics.averageSize)}</div>
+                <div className="stat-label">Average File Size</div>
+              </div>
+              {analytics.largestFile && (
+                <div className="stat-card">
+                  <div className="stat-value">{formatFileSize(analytics.largestFile.size)}</div>
+                  <div className="stat-label">Largest File</div>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {analytics.largestFile.name}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>Files by Type</h3>
+              {Object.entries(analytics.byType).map(([type, count]) => (
+                <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <Badge variant="info">{type}</Badge>
+                  <span>{count} files</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<StorageAnalyticsApp />, document.getElementById('root'));
+  </script>
+</body>
+</html>

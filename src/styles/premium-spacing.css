@@ -1,0 +1,338 @@
+/**
+ * Premium Spacing & Layout System
+ * Consistent 4px base grid with intentional hierarchy
+ * Vercel-level alignment precision
+ */
+
+:root {
+  /* Base spacing unit (4px) */
+  --space-unit: 4px;
+  
+  /* Spacing scale */
+  --space-0: 0;
+  --space-1: calc(var(--space-unit) * 1);  /* 4px */
+  --space-2: calc(var(--space-unit) * 2);  /* 8px */
+  --space-3: calc(var(--space-unit) * 3);  /* 12px */
+  --space-4: calc(var(--space-unit) * 4);  /* 16px */
+  --space-5: calc(var(--space-unit) * 5);  /* 20px */
+  --space-6: calc(var(--space-unit) * 6);  /* 24px */
+  --space-8: calc(var(--space-unit) * 8);  /* 32px */
+  --space-10: calc(var(--space-unit) * 10); /* 40px */
+  --space-12: calc(var(--space-unit) * 12); /* 48px */
+  --space-16: calc(var(--space-unit) * 16); /* 64px */
+  --space-20: calc(var(--space-unit) * 20); /* 80px */
+  --space-24: calc(var(--space-unit) * 24); /* 96px */
+  
+  /* Content width constraints */
+  --content-max-xs: 320px;
+  --content-max-sm: 480px;
+  --content-max-md: 640px;
+  --content-max-lg: 768px;
+  --content-max-xl: 1024px;
+  --content-max-2xl: 1280px;
+  --content-max-full: 1440px;
+  
+  /* Container padding */
+  --container-padding-mobile: var(--space-4);
+  --container-padding-tablet: var(--space-6);
+  --container-padding-desktop: var(--space-8);
+  
+  /* Component-specific spacing */
+  --card-padding: var(--space-5);
+  --card-padding-lg: var(--space-6);
+  --card-gap: var(--space-4);
+  --section-gap: var(--space-8);
+  --page-gap: var(--space-12);
+  
+  /* Border radius scale */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+  
+  /* Shadow scale - subtle depth */
+  --shadow-xs: 0 1px 2px hsl(var(--foreground) / 0.04);
+  --shadow-sm: 0 1px 3px hsl(var(--foreground) / 0.06), 
+               0 1px 2px hsl(var(--foreground) / 0.04);
+  --shadow-md: 0 4px 6px -1px hsl(var(--foreground) / 0.07), 
+               0 2px 4px -2px hsl(var(--foreground) / 0.05);
+  --shadow-lg: 0 10px 15px -3px hsl(var(--foreground) / 0.08), 
+               0 4px 6px -4px hsl(var(--foreground) / 0.05);
+  --shadow-xl: 0 20px 25px -5px hsl(var(--foreground) / 0.08), 
+               0 8px 10px -6px hsl(var(--foreground) / 0.04);
+  --shadow-2xl: 0 25px 50px -12px hsl(var(--foreground) / 0.15);
+  
+  /* Inner shadow for depth */
+  --shadow-inner: inset 0 2px 4px hsl(var(--foreground) / 0.04);
+  
+  /* Focused/elevated shadows */
+  --shadow-focus: 0 0 0 3px hsl(var(--primary) / 0.15);
+  --shadow-glow: 0 0 20px -5px hsl(var(--primary) / 0.2);
+}
+
+/* Dark mode shadow adjustments */
+.dark {
+  --shadow-xs: 0 1px 2px hsl(0 0% 0% / 0.2);
+  --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.25), 
+               0 1px 2px hsl(0 0% 0% / 0.2);
+  --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.3), 
+               0 2px 4px -2px hsl(0 0% 0% / 0.2);
+  --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.35), 
+               0 4px 6px -4px hsl(0 0% 0% / 0.2);
+  --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.35), 
+               0 8px 10px -6px hsl(0 0% 0% / 0.15);
+  --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.5);
+  --shadow-glow: 0 0 25px -5px hsl(var(--primary) / 0.25);
+}
+
+/* ============================================
+   LAYOUT UTILITIES
+   ============================================ */
+
+/* Premium container */
+.premium-container {
+  width: 100%;
+  max-width: var(--content-max-full);
+  margin-inline: auto;
+  padding-inline: var(--container-padding-mobile);
+}
+
+@media (min-width: 640px) {
+  .premium-container {
+    padding-inline: var(--container-padding-tablet);
+  }
+}
+
+@media (min-width: 1024px) {
+  .premium-container {
+    padding-inline: var(--container-padding-desktop);
+  }
+}
+
+/* Section spacing */
+.section-spacing {
+  padding-block: var(--section-gap);
+}
+
+/* Content grid with 12 columns */
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .content-grid {
+    gap: var(--space-6);
+  }
+}
+
+/* ============================================
+   CARD SYSTEM
+   ============================================ */
+
+.premium-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: var(--radius-lg);
+  padding: var(--card-padding);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s var(--ease-out-expo),
+              border-color 0.2s var(--ease-out-expo);
+}
+
+.premium-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: hsl(var(--border));
+}
+
+.premium-card-elevated {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-radius: var(--radius-xl);
+  padding: var(--card-padding-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Interactive card */
+.premium-card-interactive {
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-out-expo),
+              box-shadow 0.2s var(--ease-out-expo),
+              border-color 0.2s var(--ease-out-expo);
+}
+
+.premium-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: hsl(var(--primary) / 0.2);
+}
+
+.premium-card-interactive:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================
+   BUTTON REFINEMENTS
+   ============================================ */
+
+.premium-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding-inline: var(--space-4);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--radius-md);
+  transition: all 0.15s var(--ease-out-expo);
+  cursor: pointer;
+  user-select: none;
+}
+
+.premium-button:active {
+  transform: scale(0.98);
+}
+
+/* Button sizes */
+.premium-button-sm {
+  height: 32px;
+  padding-inline: var(--space-3);
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+}
+
+.premium-button-lg {
+  height: 48px;
+  padding-inline: var(--space-6);
+  font-size: 15px;
+  border-radius: var(--radius-lg);
+}
+
+/* ============================================
+   INPUT REFINEMENTS
+   ============================================ */
+
+.premium-input {
+  height: 40px;
+  padding-inline: var(--space-3);
+  font-size: 14px;
+  background: hsl(var(--input));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s var(--ease-out-expo),
+              box-shadow 0.15s var(--ease-out-expo);
+}
+
+.premium-input:focus {
+  outline: none;
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: var(--shadow-focus);
+}
+
+.premium-input::placeholder {
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+/* ============================================
+   DIVIDERS & SEPARATORS
+   ============================================ */
+
+.divider {
+  height: 1px;
+  background: hsl(var(--border) / 0.5);
+  margin-block: var(--space-4);
+}
+
+.divider-subtle {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    hsl(var(--border) / 0.5) 20%,
+    hsl(var(--border) / 0.5) 80%,
+    transparent
+  );
+  margin-block: var(--space-4);
+}
+
+/* ============================================
+   BADGE REFINEMENTS
+   ============================================ */
+
+.premium-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 22px;
+  padding-inline: var(--space-2);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  border-radius: var(--radius-full);
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.premium-badge-primary {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
+.premium-badge-success {
+  background: hsl(142 71% 45% / 0.1);
+  color: hsl(142 71% 45%);
+}
+
+.premium-badge-warning {
+  background: hsl(38 92% 50% / 0.1);
+  color: hsl(38 92% 50%);
+}
+
+.premium-badge-error {
+  background: hsl(0 84% 60% / 0.1);
+  color: hsl(0 84% 60%);
+}
+
+/* ============================================
+   EMPTY STATES
+   ============================================ */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-16) var(--space-4);
+  gap: var(--space-4);
+}
+
+.empty-state-icon {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xl);
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.empty-state-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.empty-state-description {
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+  max-width: 320px;
+}

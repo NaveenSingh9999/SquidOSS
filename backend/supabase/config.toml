@@ -1,0 +1,81 @@
+
+project_id = "aouqcwbdoyrccjcrhzzi"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[functions.api-key-management]
+verify_jwt = false
+
+[functions.api-file-upload]
+verify_jwt = false
+
+[functions.api-file-delete]
+verify_jwt = false
+
+[functions.api-file-metadata]
+verify_jwt = false
+
+[functions.api-file-upload-tebi]
+verify_jwt = true
+
+[functions.get-app-updates]
+verify_jwt = false
+
+[functions.admin-auth]
+verify_jwt = false
+
+[functions.admin-data-access]
+verify_jwt = false
+
+[functions.verify-admin]
+verify_jwt = true
+
+[functions.store-provider]
+verify_jwt = true
+
+[functions.secure-file-metadata]
+verify_jwt = true
+
+[functions.file-key]
+verify_jwt = true
+
+
+[functions.cloudbliss-api]
+verify_jwt = false
+
+[functions.github-storage]
+verify_jwt = false
+limit = 26214400
+
+[functions.ink-ai]
+verify_jwt = true
+
+[functions.squid-ai-chat]
+verify_jwt = true
+
+[functions.media-manifest]
+verify_jwt = true
+
+[functions.hls-generation]
+verify_jwt = false
+
+[functions.media-master-manifest]
+verify_jwt = false
+
+[functions.media-playlist]
+verify_jwt = false
+
+[functions.media-segment]
+verify_jwt = false

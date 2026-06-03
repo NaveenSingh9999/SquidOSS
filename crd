@@ -1,0 +1,3 @@
+#!/bin/sh
+# SquidOSS CLI — one-command management
+exec node "$(dirname "$0")/crd.js" "$@"

@@ -1,0 +1,76 @@
+name: Build SquidCloud Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "android/**"
+      - "scripts/generate-android-icons.sh"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/build-squidcloud-android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+    env:
+      SQUIDCLOUD_STORE_PASSWORD: "fuckyouHACKER@1234"
+      SQUIDCLOUD_KEY_ALIAS: "squidcloud"
+      SQUIDCLOUD_KEY_PASSWORD: "fuckyouHACKER@1234"
+      SQUIDCLOUD_KEYSTORE_BASE64: "KNDi7A6UBMcH82eulIJa3CqQp8gWo6L9g8/PL4wKG5/JOlqpi7bJwnk2KhS/ryWLdzMmVEiJNtZwZtMGkp7E7mTr09txmhiNYeTaqgqIlsnOz+cpADECuXpfCHvIy1mf0h+yDsqt/kChz4aAwsuqTxZUfh3+OqF9bLnZON1xmOnvxpJSlLfnrFm1jf7+JOu5aRs7PrbyPMc7r+D+kl0bLrm5bANtrXu0tWTNnTTY1vYkbQHSTURnXr4azn+6kiKcq0nZ66C2pt5YG1IpTb54EZgxHRiOOxu0U5eqm8CQ5qD4zcj22eGaOKBCBVIEmMlbMEnbbl2d4fIb74i/KylPSy/Gvdtf/RKpVVPqbLcgNDSqx6pvcbtIwhu46AnbVLBxWZvVxMuoP2S+pG1tgSDl/NJ2gBTSobVjEgqXy0IaFAXHcgbbSJyYOz3v5KOy9wsUhuuT3BHrAVPd2rGMO8LGaKHKjcJMEX9rcaF/nmh/hHufjgRlWr/srbHEVkrmmCIQ4qGRJ/H4FxsGc0FvnWp7pHb+eBpHor3U0/+ipACKnxz6pn20RU56T04IlxdufVDOyLcesVryiXizYDEnxS3byRgkK18zLw47aiUgCK8z9YVNICgHG9Sw9AhSk1uiKb8BlvuTpRq0ZwgJ8fIg+ze1dPlHAJvk7wINc2mfy+YuPvkFswy5mgR1uZ7M8UdNt7gEUDrElP35fBXAAeg5s0vIwmpzb1XCulSDs4kgCy8iMIhwnGSDYkvLnD/x3iArbL7XEiiOH/GrBguUlJgzIPOlPQfg7QrVgmA9PufBEP4FYkl2jjYGaJXwCM46LsgsHfcbVAeZ5/CS0tIRsoha0+3O2ZpEf8YWtwl4rJmH+xVzR0w715NDBK/vgLNmmNAFbZKU9zGJZ8ozeLRD7JmwAgbw6tuHGgOkyyyLjo7esIMPHx10E8HBx0hKfgsY2JbexFGXGRsyjtu5M03lpZn5nQ09fPmFR966kh8LWye4liK014pFjdEmcrqpiGBl91+IdL4Wbo/5xB3XlOeoYDs0RiatUb8KHb2xxov9Chz1jHGvWM+Ds99waWmvAI4V92P3/GJHGmwSqEmzRuLlvKhWHZTnG52wXjgIEBRV+1ajMPLCJjP5MKdcNNxiPouqudaO1o2ufi1mg9OOvtzm3zvsO4wPJOfmG8HOq7l+a6ScplTNs1Kc1cBOPRTQICFcQPAVmDLPkOmdRQUULVikpnZuqFZFdFw5cxta0TBNMDEwDQYJYIZIAWUDBAIBBQAEIFJcFqaraCFlfu673tFoiyke9zAkzWLYNS7yEqgU3JsCBBSOQT0EoAXqZFr0Arfrw1873oJ5gwICJxA="
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm i
+
+      - name: Restore SquidCloud keystore from env
+        run: |
+          set -euo pipefail
+          if [ -z "$SQUIDCLOUD_KEYSTORE_BASE64" ]; then
+            echo "::error::Missing required env var: SQUIDCLOUD_KEYSTORE_BASE64"
+            exit 1
+          fi
+          mkdir -p android
+          # Remove any accidental whitespace/newlines from pasted base64 and decode safely.
+          printf '%s' "$SQUIDCLOUD_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > android/squidcloud.keystore
+          if [ ! -s android/squidcloud.keystore ]; then
+            echo "::error::Decoded keystore file is empty"
+            exit 1
+          fi
+          echo "SQUIDCLOUD_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/squidcloud.keystore" >> "$GITHUB_ENV"
+
+      - name: Build Android APK using Local Script
+        run: |
+          sudo bash scripts/build-android-local.sh
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: squidcloud-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Push APK to SquidCloud Dev API
+        run: |
+          curl -X POST "https://aouqcwbdoyrccjcrhzzi.supabase.co/functions/v1/cloudbliss-api/files/upload" \
+            -H "X-SquidCloud-Key: $SQUIDCLOUD_API_KEY" \
+            -F "file=@android/app/build/outputs/apk/release/app-release.apk"
+        env:
+          SQUIDCLOUD_API_KEY: "cb_61cade50fdd599e2b4995fdafa9f72fa1b3ea575fe52fd41540fd175e6ec6519"

@@ -1,0 +1,227 @@
+/**
+ * ExtensionLoader - Loads and manages extensions in sandboxed iframes
+ */
+
+import React, { useEffect, useRef, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+
+interface ExtensionLoaderProps {
+  extensionId: string;
+  manifestUrl: string;
+  permissions: string[];
+  userId: string;
+  apiKey: string;
+  onLoad?: () => void;
+  onError?: (error: string) => void;
+}
+
+interface ExtensionManifest {
+  name: string;
+  version: string;
+  entry: string;
+  permissions: string[];
+  [key: string]: any;
+}
+
+export const ExtensionLoader: React.FC<ExtensionLoaderProps> = ({
+  extensionId,
+  manifestUrl,
+  permissions,
+  userId,
+  apiKey,
+  onLoad,
+  onError
+}) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [manifest, setManifest] = useState<ExtensionManifest | null>(null);
+
+  useEffect(() => {
+    loadExtension();
+  }, [extensionId, manifestUrl]);
+
+  useEffect(() => {
+    // Listen for messages from extension
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'squidlab:message') {
+        handleExtensionMessage(event.data);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [manifest]);
+
+  const loadExtension = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch manifest
+      const manifestResponse = await fetch(manifestUrl);
+      if (!manifestResponse.ok) {
+        throw new Error('Failed to fetch manifest');
+      }
+
+      const manifestData = await manifestResponse.json();
+      
+      // Validate manifest
+      if (!validateManifest(manifestData)) {
+        throw new Error('Invalid manifest');
+      }
+
+      // Verify permissions
+      const hasAllPermissions = manifestData.permissions.every((p: string) => 
+        permissions.includes(p)
+      );
+      
+      if (!hasAllPermissions) {
+        throw new Error('Extension requires permissions not granted by user');
+      }
+
+      setManifest(manifestData);
+
+      // Load extension in iframe
+      if (iframeRef.current) {
+        // Inject config into iframe
+        const config = {
+          manifest: manifestData,
+          apiKey,
+          userId,
+          theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+        };
+
+        const iframe = iframeRef.current;
+        iframe.onload = () => {
+          // Send config to extension
+          iframe.contentWindow?.postMessage({
+            type: 'squidlab:init',
+            config
+          }, '*');
+
+          setLoading(false);
+          onLoad?.();
+        };
+
+        iframe.onerror = () => {
+          setLoading(false);
+          onError?.('Failed to load extension');
+        };
+
+        iframe.src = manifestData.entry;
+      }
+    } catch (error) {
+      console.error('Extension load error:', error);
+      setLoading(false);
+      onError?.((error as Error).message);
+    }
+  };
+
+  const validateManifest = (manifest: any): boolean => {
+    return (
+      typeof manifest.name === 'string' &&
+      typeof manifest.version === 'string' &&
+      typeof manifest.entry === 'string' &&
+      Array.isArray(manifest.permissions)
+    );
+  };
+
+  const handleExtensionMessage = async (message: any) => {
+    const { event, data, extensionId: msgExtId } = message;
+
+    // Verify message is from current extension
+    if (msgExtId !== manifest?.name) return;
+
+    switch (event) {
+      case 'extension:ready':
+        console.log(`Extension ${data.name} v${data.version} loaded`);
+        break;
+
+      case 'notification:show':
+        // Forward notification to parent app
+        window.parent.postMessage({
+          type: 'squidlab:notification',
+          data
+        }, '*');
+        break;
+
+      case 'squidlab:save-settings':
+        await saveExtensionSettings(extensionId, data.settings);
+        break;
+
+      case 'squidlab:load-settings':
+        const settings = await loadExtensionSettings(extensionId);
+        iframeRef.current?.contentWindow?.postMessage({
+          type: 'squidlab:settings-response',
+          extensionId: msgExtId,
+          settings
+        }, '*');
+        break;
+
+      case 'squidlab:permission-request':
+        // Request permission from user
+        const granted = await requestPermission(data.permission);
+        iframeRef.current?.contentWindow?.postMessage({
+          type: 'squidlab:permission-response',
+          permission: data.permission,
+          granted
+        }, '*');
+        break;
+    }
+  };
+
+  const saveExtensionSettings = async (extensionId: string, settings: any) => {
+    try {
+      const { error } = await supabase
+        .from('installed_extensions')
+        .update({ settings })
+        .eq('extension_id', extensionId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+    }
+  };
+
+  const loadExtensionSettings = async (extensionId: string): Promise<any> => {
+    try {
+      const { data, error } = await supabase
+        .from('installed_extensions')
+        .select('settings')
+        .eq('extension_id', extensionId)
+        .eq('user_id', userId)
+        .single();
+
+      if (error) throw error;
+      return data?.settings || {};
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      return {};
+    }
+  };
+
+  const requestPermission = async (permission: string): Promise<boolean> => {
+    // Show permission request dialog to user
+    return confirm(`Extension "${manifest?.name}" is requesting permission: ${permission}\n\nDo you want to grant this permission?`);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="extension-container w-full h-full">
+      <iframe
+        ref={iframeRef}
+        sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+        className="w-full h-full border-0"
+        style={{ minHeight: '600px' }}
+        title={manifest?.name || 'Extension'}
+      />
+    </div>
+  );
+};

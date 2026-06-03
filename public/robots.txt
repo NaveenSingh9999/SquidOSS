@@ -1,0 +1,20 @@
+
+User-agent: *
+Allow: /
+Disallow: /ad/
+Disallow: /admin-dashboard
+Disallow: /admin/
+Disallow: /api/
+Disallow: /supabase/
+Disallow: /_admin/
+Disallow: /management/
+
+# Prevent crawling of sensitive areas
+Disallow: /auth
+Disallow: /profile
+Disallow: /settings
+Disallow: /dashboard
+Disallow: /.env
+Disallow: /.git
+
+Sitemap: https://SquidCloud.app/sitemap.xml

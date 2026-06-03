@@ -1,0 +1,381 @@
+/* SquidLab SDK - SquidCloud UI Styles */
+
+:root {
+  --squid-primary: #3b82f6;
+  --squid-primary-hover: #2563eb;
+  --squid-secondary: #6b7280;
+  --squid-success: #10b981;
+  --squid-danger: #ef4444;
+  --squid-warning: #f59e0b;
+  --squid-info: #3b82f6;
+  --squid-background: #ffffff;
+  --squid-surface: #f9fafb;
+  --squid-border: #e5e7eb;
+  --squid-text: #1f2937;
+  --squid-text-muted: #6b7280;
+  --squid-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --squid-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --squid-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --squid-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --squid-radius: 0.5rem;
+  --squid-radius-sm: 0.375rem;
+  --squid-radius-lg: 0.75rem;
+}
+
+[data-theme="dark"] {
+  --squid-background: #111827;
+  --squid-surface: #1f2937;
+  --squid-border: #374151;
+  --squid-text: #f9fafb;
+  --squid-text-muted: #9ca3af;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+/* Utility Classes */
+.squid-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.squid-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.squid-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.squid-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Container */
+.squid-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* Card */
+.squid-card {
+  background: var(--squid-background);
+  border: 1px solid var(--squid-border);
+  border-radius: var(--squid-radius);
+  box-shadow: var(--squid-shadow);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.squid-card:hover {
+  box-shadow: var(--squid-shadow-md);
+}
+
+.squid-card-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--squid-border);
+}
+
+.squid-card-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--squid-text);
+  margin: 0;
+}
+
+.squid-card-description {
+  font-size: 0.875rem;
+  color: var(--squid-text-muted);
+  margin-top: 0.25rem;
+}
+
+.squid-card-content {
+  padding: 1.5rem;
+}
+
+.squid-card-footer {
+  padding: 1rem 1.5rem;
+  background: var(--squid-surface);
+  border-top: 1px solid var(--squid-border);
+}
+
+/* Button */
+.squid-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  border-radius: var(--squid-radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  text-decoration: none;
+}
+
+.squid-button:focus {
+  ring: 2px solid var(--squid-primary);
+  ring-offset: 2px;
+}
+
+.squid-button-primary {
+  background: var(--squid-primary);
+  color: white;
+}
+
+.squid-button-primary:hover {
+  background: var(--squid-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--squid-shadow-md);
+}
+
+.squid-button-secondary {
+  background: var(--squid-surface);
+  color: var(--squid-text);
+  border-color: var(--squid-border);
+}
+
+.squid-button-secondary:hover {
+  background: var(--squid-border);
+}
+
+.squid-button-danger {
+  background: var(--squid-danger);
+  color: white;
+}
+
+.squid-button-danger:hover {
+  opacity: 0.9;
+}
+
+.squid-button-ghost {
+  background: transparent;
+  color: var(--squid-text);
+}
+
+.squid-button-ghost:hover {
+  background: var(--squid-surface);
+}
+
+.squid-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Input */
+.squid-input {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--squid-text);
+  background: var(--squid-background);
+  border: 1px solid var(--squid-border);
+  border-radius: var(--squid-radius-sm);
+  transition: all 0.2s ease;
+}
+
+.squid-input:focus {
+  outline: none;
+  border-color: var(--squid-primary);
+  ring: 2px solid var(--squid-primary);
+}
+
+.squid-input:disabled {
+  background: var(--squid-surface);
+  cursor: not-allowed;
+}
+
+.squid-input-error {
+  border-color: var(--squid-danger);
+}
+
+/* Badge */
+.squid-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+}
+
+.squid-badge-primary {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.squid-badge-success {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.squid-badge-danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.squid-badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Table */
+.squid-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.squid-table thead {
+  background: var(--squid-surface);
+  border-bottom: 1px solid var(--squid-border);
+}
+
+.squid-table th {
+  padding: 0.75rem 1.5rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--squid-text-muted);
+  text-transform: uppercase;
+}
+
+.squid-table td {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--squid-border);
+  font-size: 0.875rem;
+  color: var(--squid-text);
+}
+
+.squid-table tbody tr:hover {
+  background: var(--squid-surface);
+}
+
+/* Modal */
+.squid-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: fadeIn 0.2s ease;
+}
+
+.squid-modal {
+  background: var(--squid-background);
+  border-radius: var(--squid-radius-lg);
+  box-shadow: var(--squid-shadow-lg);
+  max-width: 32rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Toast */
+.squid-toast {
+  position: fixed;
+  padding: 1rem 1.5rem;
+  border-radius: var(--squid-radius);
+  box-shadow: var(--squid-shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 300px;
+  animation: slideIn 0.3s ease-out;
+  z-index: 100;
+}
+
+.squid-toast-success {
+  background: var(--squid-success);
+  color: white;
+}
+
+.squid-toast-error {
+  background: var(--squid-danger);
+  color: white;
+}
+
+.squid-toast-warning {
+  background: var(--squid-warning);
+  color: white;
+}
+
+.squid-toast-info {
+  background: var(--squid-info);
+  color: white;
+}
+
+/* Loading Spinner */
+.squid-spinner {
+  border: 2px solid var(--squid-border);
+  border-top-color: var(--squid-primary);
+  border-radius: 50%;
+  width: 1.5rem;
+  height: 1.5rem;
+  animation: spin 0.6s linear infinite;
+}
+
+/* Extension specific */
+.extension-container {
+  padding: 1.5rem;
+  min-height: 400px;
+}
+
+.extension-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: var(--squid-text-muted);
+}
+
+.extension-error {
+  padding: 2rem;
+  text-align: center;
+  color: var(--squid-danger);
+}

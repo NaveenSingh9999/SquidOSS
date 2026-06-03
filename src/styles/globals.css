@@ -1,0 +1,235 @@
+/* =====================================================
+   globals.css — SquidCloud
+   Squircle shapes are handled by squircle.css
+   Removed conflicting !important border-radius overrides
+   ===================================================== */
+
+/* ── Shadow System ──────────────────────────────────── */
+/* Multi-layered shadows for depth and elevation */
+:root {
+  /* Inline elements, chips, small badges */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* Cards, panels */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06),
+               0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* Dropdowns, popovers, tooltips */
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07),
+               0 2px 4px -1px rgba(0, 0, 0, 0.04);
+
+  /* Modals, dialogs, sheets */
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08),
+               0 4px 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+.dark {
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25),
+               0 1px 2px rgba(0, 0, 0, 0.2);
+
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
+               0 2px 4px -1px rgba(0, 0, 0, 0.2);
+
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35),
+               0 4px 6px -2px rgba(0, 0, 0, 0.2);
+}
+
+/* Dark theme overrides */
+.dark {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 240 4.9% 83.9%;
+}
+
+.dark .card,
+.dark .tabs-content {
+  background-color: hsl(240 10% 3.9%);
+  border-color: hsl(240 3.7% 15.9%);
+}
+
+.dark .button-secondary {
+  background-color: hsl(240 3.7% 15.9%);
+  color: hsl(0 0% 98%);
+}
+
+/* Apple-style color transitions only — NOT border-radius (squircle.css owns that) */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Enhanced Text Editor Optimizations */
+.enhanced-text-editor textarea {
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "liga" 0;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.enhanced-text-editor .syntax-highlighting-layer {
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  contain: layout style paint;
+}
+
+.enhanced-text-editor[data-file-type="text"] textarea,
+.enhanced-text-editor[data-file-type="markdown"] textarea {
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
+}
+
+.enhanced-text-editor[data-file-type="code"] textarea {
+  text-rendering: optimizeSpeed;
+  font-variant-ligatures: none;
+  letter-spacing: -0.01em;
+}
+
+.enhanced-text-editor textarea,
+.enhanced-text-editor .syntax-highlighting-layer {
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 768px) {
+  .enhanced-text-editor textarea {
+    font-size: 16px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+.enhanced-text-editor textarea::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+.enhanced-text-editor[data-theme="dark"] textarea::selection {
+  background-color: rgba(59, 130, 246, 0.5);
+}
+
+.enhanced-text-editor textarea {
+  caret-color: #3b82f6;
+}
+
+.enhanced-text-editor[data-theme="dark"] textarea {
+  caret-color: #60a5fa;
+}
+
+.enhanced-text-editor .line-numbers {
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+
+/* ── Dialog / Modal shadows ───────────────────────────── */
+/* Border-radius handled by squircle.css */
+[role="dialog"],
+[role="alertdialog"] {
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 10px 20px -5px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Smooth transitions for interactive elements ─────── */
+/* Only transform/opacity/shadow — NOT border-radius (creates jank) */
+* {
+  transition-property: background-color, border-color, color, fill, stroke,
+    opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Bulk Actions Toolbar Animations */
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 3s ease infinite;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.8; }
+}
+
+/* Glassmorphism */
+.glass-effect {
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+/* Shine */
+@keyframes shine {
+  0%   { left: -100%; }
+  100% { left: 200%; }
+}
+
+/* Focus states */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid hsl(221, 83%, 53%);
+  outline-offset: 2px;
+}
+
+/* GPU transform hint */
+.transform-gpu {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+@media (min-width: 1024px) {
+  html {
+    zoom: 1.2;
+  }
+}
+
+@media (max-width: 1023px) {
+  html {
+    zoom: 1;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    width: 100%;
+    overflow-x: hidden;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  html {
+    zoom: 1.05;
+  }
+}
