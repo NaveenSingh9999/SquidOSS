@@ -41,7 +41,7 @@ async function out(program, args, cwd = ROOT) {
 
 async function doctor() {
   log('Running diagnostics...')
-  const pg = await out('sudo', ['-u', 'postgres', 'psql', '-c', 'SELECT 1']).then(() => true).catch(() => false)
+  const pg = !!pgExec('SELECT 1')
   const redis = await out('redis-cli', ['ping']).then(r => r === 'PONG').catch(() => false)
   const backendMods = existsSync(resolve(BACKEND, 'node_modules'))
   const rootMods = existsSync(resolve(ROOT, 'node_modules'))
@@ -93,8 +93,61 @@ function dbUrl() {
   } catch { return '' }
 }
 
-function pgSudo(sql) {
-  return execSync(`sudo -u postgres psql -c "${sql.replace(/"/g, '\\"')}"`, { stdio: 'ignore', timeout: 10000 })
+function pgExec(sql, opts = {}) {
+  // Try multiple methods to run psql
+  const methods = [
+    () => execSync(`sudo -u postgres psql -c "${sql.replace(/"/g, '\\"')}" 2>/dev/null`, { ...opts, stdio: 'ignore', timeout: 10000 }),
+    () => execSync(`psql -h localhost -U postgres -c "${sql.replace(/"/g, '\\"')}" 2>/dev/null`, { ...opts, stdio: 'ignore', timeout: 10000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
+  ]
+  for (const m of methods) { try { return m() } catch {} }
+}
+
+function pgFile(file) {
+  const methods = [
+    () => execSync(`sudo -u postgres psql -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 120000 }),
+    () => execSync(`psql -h localhost -U postgres -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 120000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
+  ]
+  for (const m of methods) { try { return m() } catch {} }
+  throw new Error('Could not run psql (try: sudo apt install postgresql-client)')
+}
+
+async function setupPostgres() {
+  log('Configuring PostgreSQL for SquidOSS...')
+  pgExec(`ALTER USER postgres PASSWORD 'postgres'`)
+  pgExec(`CREATE DATABASE squidoss OWNER postgres`)
+  pgExec(`GRANT ALL PRIVILEGES ON DATABASE squidoss TO postgres`)
+
+  // Try to set trust auth in pg_hba.conf
+  try {
+    const hba = execSync('find /etc/postgresql -name pg_hba.conf 2>/dev/null | head -1', { encoding: 'utf-8' }).trim()
+    if (hba) {
+      for (const cmd of [
+        `sed -i 's/local\\s\\+all\\s\\+all\\s\\+peer/local   all             all                                     trust/' "${hba}"`,
+        `sed -i 's/host\\s\\+all\\s\\+all\\s\\+127.0.0.1\\/32\\s\\+scram-sha-256/host    all             all             127.0.0.1\\/32            trust/' "${hba}"`,
+        `sed -i 's/host\\s\\+all\\s\\+all\\s\\+::1\\/128\\s\\+scram-sha-256/host    all             all             ::1\\/128                 trust/' "${hba}"`,
+      ]) {
+        try { execSync(`sudo ${cmd} 2>/dev/null`, { stdio: 'ignore' }) } catch {}
+        try { execSync(cmd, { stdio: 'ignore' }) } catch {}
+      }
+      try { execSync('sudo pg_ctlcluster * main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null || pg_ctlcluster * main reload 2>/dev/null', { stdio: 'ignore' }) } catch {}
+    }
+  } catch {}
+}
+
+async function migrate() {
+  const migration = resolve(BACKEND, 'migrations/001_schema.sql')
+  if (!existsSync(migration)) { log('No schema migration found, skipping'); return }
+  if (!existsSync(ENV_FILE)) { warn('No .env file, skipping migration'); return }
+
+  await setupPostgres()
+
+  try {
+    log('Running schema migration...')
+    pgFile(migration)
+    log('Schema migrated')
+  } catch (e) {
+    warn(`Migration had partial errors: ${e.message}`)
+  }
 }
 
 async function setupPostgres() {
@@ -155,12 +208,10 @@ async function start() {
   }
 
   // Ensure PostgreSQL is running
-  try {
-    execSync('sudo -u postgres psql -c "SELECT 1" 2>/dev/null', { stdio: 'ignore', timeout: 5000 })
-  } catch {
+  if (!pgExec('SELECT 1')) {
     log('Starting PostgreSQL...')
     try {
-      execSync('sudo pg_ctlcluster 16 main start 2>/dev/null || sudo pg_ctlcluster 15 main start 2>/dev/null || sudo pg_ctlcluster 14 main start 2>/dev/null || sudo service postgresql start 2>/dev/null', { stdio: 'ignore' })
+      execSync('sudo pg_ctlcluster 16 main start 2>/dev/null || sudo pg_ctlcluster 15 main start 2>/dev/null || sudo pg_ctlcluster 14 main start 2>/dev/null || sudo service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null', { stdio: 'ignore' })
       await new Promise(r => setTimeout(r, 3000))
     } catch { warn('Could not auto-start PostgreSQL, try: sudo service postgresql start') }
   }
@@ -263,7 +314,7 @@ async function status() {
   const pids = readPids()
   const back = pids.backend && isRunning(pids.backend)
   const front = pids.frontend && isRunning(pids.frontend)
-  const pg = await out('sudo', ['-u', 'postgres', 'psql', '-c', 'SELECT 1']).then(() => true).catch(() => false)
+  const pg = !!pgExec('SELECT 1')
   const redis = await out('redis-cli', ['ping']).then(r => r === 'PONG').catch(() => false)
   const backendResp = await out('curl', ['-s', '--connect-timeout', '2', 'http://localhost:3000/health']).catch(() => '')
 
@@ -282,8 +333,9 @@ async function codespace() {
   try { execSync('sudo service redis-server start', { stdio: 'ignore' }) } catch {}
   try { execSync('sudo service postgresql start', { stdio: 'ignore' }) } catch {}
   await new Promise(r => setTimeout(r, 2000))
-  // Set postgres password
-  try { execSync(`sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"`, { stdio: 'ignore' }) } catch {}
+  // Set postgres password & create DB using pgExec (tries sudo + PGPASSWORD)
+  pgExec(`ALTER USER postgres PASSWORD 'postgres'`)
+  pgExec(`CREATE DATABASE squidoss OWNER postgres`)
   // Build and start
   await build()
   await start()
