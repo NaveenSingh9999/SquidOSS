@@ -68,43 +68,71 @@ async function configure() {
   if (!existsSync(ENV_EXAMPLE)) { err('.env.example missing'); return false }
   if (existsSync(ENV_FILE)) { log('.env already exists'); return true }
 
+  // Detect Codespaces URL for CORS
+  let corsOrigin = 'http://localhost:5173'
+  try {
+    const codespace = execSync('echo $CODESPACE_NAME', { encoding: 'utf-8' }).trim()
+    if (codespace) corsOrigin = `https://${codespace}-8080.app.github.dev`
+  } catch {}
+
   let config = readFileSync(ENV_EXAMPLE, 'utf-8')
-  config = config.replace(/DATABASE_URL=.*/, 'DATABASE_URL=postgres://postgres@localhost:5432/squidoss')
+  config = config.replace(/DATABASE_URL=.*/, 'DATABASE_URL=postgres://postgres:postgres@localhost:5432/squidoss')
   config = config.replace(/REDIS_URL=.*/, 'REDIS_URL=redis://localhost:6379')
   config = config.replace(/JWT_SECRET=.*/, `JWT_SECRET=${(await import('node:crypto')).randomBytes(32).toString('hex')}`)
+  config = config.replace(/CORS_ORIGIN=.*/, `CORS_ORIGIN=${corsOrigin}`)
   writeFileSync(ENV_FILE, config)
   log('.env created')
+}
+
+function dbUrl() {
+  try {
+    const raw = readFileSync(ENV_FILE, 'utf-8')
+    const line = raw.split('\n').find(l => l.startsWith('DATABASE_URL='))
+    if (!line) return ''
+    return line.split('=').slice(1).join('=')
+  } catch { return '' }
+}
+
+// Run psql using the connection URI (password is embedded)
+function psqlRun(sqlOrFile) {
+  const url = dbUrl()
+  if (!url) throw new Error('DATABASE_URL not set')
+  const isFile = existsSync(sqlOrFile)
+  const cmd = isFile
+    ? `psql "${url}" -f "${sqlOrFile}"`
+    : `psql "${url}" -c "${sqlOrFile}"`
+  return execSync(cmd, { stdio: 'inherit', encoding: 'utf-8', timeout: 60000 })
+}
+
+async function setupPostgres() {
+  const url = dbUrl()
+  if (!url) return
+  log('Ensuring PostgreSQL database exists...')
+  try {
+    // Try to create database (ignore if exists)
+    execSync(`psql "${url}" -c "SELECT 1"`, { stdio: 'ignore', timeout: 5000 })
+    log('Database already accessible')
+    return
+  } catch {}
+  // Create DB via postgres default connection
+  try {
+    execSync(`createdb "$(echo "${url}" | sed 's/.*\\///' | sed 's/\\?.*//')" 2>/dev/null`, { stdio: 'ignore' })
+  } catch {}
 }
 
 async function migrate() {
   const migration = resolve(BACKEND, 'migrations/001_schema.sql')
   if (!existsSync(migration)) { log('No schema migration found, skipping'); return }
-
   if (!existsSync(ENV_FILE)) { warn('No .env file, skipping migration'); return }
 
-  const dbUrl = readFileSync(ENV_FILE, 'utf-8')
-    .split('\n')
-    .find(l => l.startsWith('DATABASE_URL='))
-    ?.split('=')
-    .slice(1)
-    .join('=')
-
-  if (!dbUrl) { warn('No DATABASE_URL in .env, skipping migration'); return }
+  await setupPostgres()
 
   try {
-    const url = new URL(dbUrl)
-    const db = url.pathname.slice(1)
-    const user = url.username || 'postgres'
-
-    const host = url.hostname
-    const port = url.port || '5432'
-
-    await out('createdb', [`-h${host}`, `-p${port}`, `-U${user}`, db]).catch(() => {})
-    const code = await sh('psql', [`-h${host}`, `-p${port}`, `-U${user}`, `-d${db}`, '-f', migration])
-    if (code === 0) log('Schema migrated')
-    else warn('Migration had partial errors (tables may already exist)')
+    log('Running schema migration...')
+    psqlRun(migration)
+    log('Schema migrated')
   } catch (e) {
-    warn(`Migration skipped: ${e.message}`)
+    warn(`Migration had partial errors: ${e.message}`)
   }
 }
 
@@ -130,12 +158,15 @@ async function start() {
   }
 
   // Ensure PostgreSQL is running
-  if (!await out('pg_isready', ['-q']).then(() => true).catch(() => false)) {
+  const pgUrl = dbUrl()
+  try {
+    if (pgUrl) execSync(`psql "${pgUrl}" -c "SELECT 1" 2>/dev/null`, { stdio: 'ignore', timeout: 5000 })
+  } catch {
     log('Starting PostgreSQL...')
     try {
-      execSync('pg_ctl start -l /dev/null 2>/dev/null || pg_ctlcluster * main start 2>/dev/null || sudo service postgresql start 2>/dev/null || pg_ctl -D /var/lib/postgresql/data start 2>/dev/null', { stdio: 'ignore' })
-      await new Promise(r => setTimeout(r, 2000))
-    } catch { warn('Could not auto-start PostgreSQL') }
+      execSync('sudo pg_ctlcluster 16 main start 2>/dev/null || sudo pg_ctlcluster 15 main start 2>/dev/null || sudo pg_ctlcluster 14 main start 2>/dev/null || sudo service postgresql start 2>/dev/null || pg_ctl start -l /dev/null 2>/dev/null', { stdio: 'ignore' })
+      await new Promise(r => setTimeout(r, 3000))
+    } catch { warn('Could not auto-start PostgreSQL, try: sudo service postgresql start') }
   }
 
   // Ensure Redis is running
@@ -236,7 +267,7 @@ async function status() {
   const pids = readPids()
   const back = pids.backend && isRunning(pids.backend)
   const front = pids.frontend && isRunning(pids.frontend)
-  const pg = await out('pg_isready', ['-q']).then(() => true).catch(() => false)
+  const pg = await out('psql', [`"${dbUrl()}"`, '-c', 'SELECT 1']).then(() => true).catch(() => false) || await out('pg_isready', ['-q']).then(() => true).catch(() => false)
   const redis = await out('redis-cli', ['ping']).then(r => r === 'PONG').catch(() => false)
   const backendResp = await out('curl', ['-s', '--connect-timeout', '2', 'http://localhost:3000/health']).catch(() => '')
 
@@ -247,8 +278,23 @@ async function status() {
   console.log(`Redis:     ${redis ? 'running' : 'stopped'}\n`)
 }
 
+async function codespace() {
+  log('Setting up SquidOSS for GitHub Codespaces...')
+  // Install deps
+  try { execSync('sudo apt-get update && sudo apt-get install -y redis-server postgresql 2>&1', { stdio: 'inherit', timeout: 120000 }) } catch {}
+  // Start services
+  try { execSync('sudo service redis-server start', { stdio: 'ignore' }) } catch {}
+  try { execSync('sudo service postgresql start', { stdio: 'ignore' }) } catch {}
+  await new Promise(r => setTimeout(r, 2000))
+  // Set postgres password
+  try { execSync('sudo -u postgres psql -c "ALTER USER postgres PASSWORD '"'"'postgres'"'"';"', { stdio: 'ignore' }) } catch {}
+  // Build and start
+  await build()
+  await start()
+}
+
 const CMD = process.argv[2] || 'help'
-const CMDS = { build, start, stop, status, doctor, configure }
+const CMDS = { build, start, stop, status, doctor, configure, codespace }
 
 if (CMD === 'help') {
   console.log(`
@@ -263,6 +309,7 @@ Commands:
   status      Show running services
   doctor      Diagnose environment
   configure   Generate .env
+  codespace   Full setup for GitHub Codespaces (one-shot)
 `)
 } else if (CMDS[CMD]) {
   CMDS[CMD]().then(ok => { if (ok === false) process.exit(1) }).catch(e => { err(e.message); process.exit(1) })
