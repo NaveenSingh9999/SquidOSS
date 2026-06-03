@@ -142,8 +142,14 @@ async function start() {
   if (await out('redis-cli', ['ping']).then(r => r !== 'PONG').catch(() => true)) {
     log('Starting Redis...')
     try {
-      execSync('redis-server --daemonize yes 2>/dev/null || sudo service redis-server start 2>/dev/null', { stdio: 'ignore' })
-      await new Promise(r => setTimeout(r, 1000))
+      // Try installing Redis first (Codespaces, bare OS)
+      if (!existsSync('/usr/bin/redis-server')) {
+        try {
+          execSync('sudo apt-get install redis-server -y 2>/dev/null || sudo apt install redis -y 2>/dev/null', { stdio: 'ignore' })
+        } catch {}
+      }
+      execSync('redis-server --daemonize yes 2>/dev/null || sudo service redis-server start 2>/dev/null || sudo systemctl start redis-server 2>/dev/null', { stdio: 'ignore' })
+      await new Promise(r => setTimeout(r, 2000))
     } catch { warn('Could not auto-start Redis') }
   }
 
@@ -199,9 +205,17 @@ async function start() {
     log('No frontend Vite config found, skipping frontend')
   }
 
+  // Read frontend port from vite config
+  let frontendPort = '5173'
+  try {
+    const viteConfig = readFileSync(resolve(ROOT, 'vite.config.ts'), 'utf-8')
+    const portMatch = viteConfig.match(/port:\s*(\d+)/)
+    if (portMatch) frontendPort = portMatch[1]
+  } catch {}
+
   log('SquidOSS is running')
   log(`  Backend:  http://localhost:3000`)
-  if (pids.frontend) log(`  Frontend: http://localhost:5173`)
+  if (pids.frontend) log(`  Frontend: http://localhost:${frontendPort}`)
 }
 
 async function stop() {
