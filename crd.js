@@ -287,7 +287,7 @@ async function codespace() {
   try { execSync('sudo service postgresql start', { stdio: 'ignore' }) } catch {}
   await new Promise(r => setTimeout(r, 2000))
   // Set postgres password
-  try { execSync('sudo -u postgres psql -c "ALTER USER postgres PASSWORD '"'"'postgres'"'"';"', { stdio: 'ignore' }) } catch {}
+  try { execSync(`sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"`, { stdio: 'ignore' }) } catch {}
   // Build and start
   await build()
   await start()
