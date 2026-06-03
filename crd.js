@@ -150,42 +150,6 @@ async function migrate() {
   }
 }
 
-async function setupPostgres() {
-  log('Configuring PostgreSQL for SquidOSS...')
-  // Set password and create database using sudo (avoids peer auth issue)
-  try { pgSudo(`ALTER USER postgres PASSWORD 'postgres'`) } catch {}
-  try { pgSudo(`CREATE DATABASE squidoss OWNER postgres`) } catch {}
-  try { pgSudo(`GRANT ALL PRIVILEGES ON DATABASE squidoss TO postgres`) } catch {}
-
-  // Also try trust auth in pg_hba.conf for future non-sudo connections
-  try {
-    const hba = execSync('sudo find /etc/postgresql -name pg_hba.conf 2>/dev/null | head -1', { encoding: 'utf-8' }).trim()
-    if (hba) {
-      execSync(`sudo sed -i 's/local\\s\\+all\\s\\+all\\s\\+peer/local   all             all                                     trust/' "${hba}"`, { stdio: 'ignore' })
-      execSync(`sudo sed -i 's/host\\s\\+all\\s\\+all\\s\\+127.0.0.1\\/32\\s\\+scram-sha-256/host    all             all             127.0.0.1\/32            trust/' "${hba}"`, { stdio: 'ignore' })
-      execSync(`sudo sed -i 's/host\\s\\+all\\s\\+all\\s\\+::1\\/128\\s\\+scram-sha-256/host    all             all             ::1\/128                 trust/' "${hba}"`, { stdio: 'ignore' })
-      execSync('sudo pg_ctlcluster * main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null', { stdio: 'ignore' })
-      log('PostgreSQL configured with trust auth')
-    }
-  } catch {}
-}
-
-async function migrate() {
-  const migration = resolve(BACKEND, 'migrations/001_schema.sql')
-  if (!existsSync(migration)) { log('No schema migration found, skipping'); return }
-  if (!existsSync(ENV_FILE)) { warn('No .env file, skipping migration'); return }
-
-  await setupPostgres()
-
-  try {
-    log('Running schema migration...')
-    execSync(`sudo -u postgres psql -d squidoss -f "${migration}" 2>&1`, { stdio: 'inherit', timeout: 120000 })
-    log('Schema migrated')
-  } catch (e) {
-    warn(`Migration had partial errors: ${e.message}`)
-  }
-}
-
 async function build() {
   log('Building SquidOSS...')
   await configure()
