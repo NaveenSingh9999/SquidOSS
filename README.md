@@ -16,7 +16,9 @@
   <a href="https://github.com/NaveenSingh9999/SquidOSS"><img src="https://img.shields.io/github/stars/NaveenSingh9999/SquidOSS?style=flat-square&color=F59E0B" alt="Stars"></a>
 </p>
 
----
+```bash
+curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/install.sh | bash
+```
 
 **SquidOSS** is a production-ready, self-hosted file storage platform that gives you Google Drive / Dropbox-level functionality — without paying per-seat, per-GB, or per-API-call. Built for developers who want control and users who want privacy.
 
@@ -38,10 +40,6 @@
 ---
 
 ## 🚀 One-Command Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/install.sh | bash
-```
 
 That's it. The script detects your OS (Linux, macOS, Windows, Termux), installs PostgreSQL + Redis + Node.js, clones the repo, runs the full 74-table schema migration, and creates a desktop launcher.
 
