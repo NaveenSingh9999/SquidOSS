@@ -1,9 +1,18 @@
 # SquidOSS Windows Installer
-# Run in PowerShell as Administrator:
+#
+# One-liner (run in cmd.exe or PowerShell):
+#   powershell -c "iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1'))"
+#
+# Or save and run in PowerShell as Administrator:
 #   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-#   iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1'))
+#   .\install.ps1
 
+# Enable TLS 1.2 (required for GitHub downloads on older Windows 10 / PowerShell 5)
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Stop on first error — but catch-block handles install failures gracefully
 $ErrorActionPreference = "Stop"
+
 $REPO = "https://github.com/NaveenSingh9999/SquidOSS.git"
 $DIR = "$env:USERPROFILE\SquidOSS"
 
@@ -13,8 +22,9 @@ function Ok($m)   { Write-Host "  ✓ $m" -ForegroundColor Green }
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
+  Write-Host ""
   Write-Host "WARNING: Not running as Administrator." -ForegroundColor Red
-  Write-Host "  Some installs may fail. Restart PowerShell as Admin and try again." -ForegroundColor Yellow
+  Write-Host "  Winget installs will fail. Continue anyway (manual installs only)." -ForegroundColor Yellow
   Write-Host ""
 }
 
@@ -25,74 +35,116 @@ Write-Host "║      Self-Hosted File Storage        ║" -ForegroundColor Cyan
 Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
-# ── Helper: install via winget or choco ───────────────────────
-function Install-Package($name, $wingetId, $chocoId, $manualUrl) {
+# ── Helper: install via winget ────────────────────────────────
+function Install-Package($name, $wingetId, $manualUrl) {
+  if (-not $isAdmin) { Warn("Install $name manually: $manualUrl"); return }
+  Step "Installing $name..."
   try {
-    Step "Installing $name via winget..."
-    winget install $wingetId --silent --accept-package-agreements | Out-Null
-    Ok("$name installed")
-    return
+    $p = Start-Process -Wait -PassThru -NoNewWindow -FilePath "winget" -ArgumentList "install",$wingetId,"--silent","--accept-package-agreements"
+    if ($p.ExitCode -eq 0) { Ok("$name installed") }
+    else { throw "winget exit code $($p.ExitCode)" }
   } catch {
-    try {
-      Step "Installing $name via chocolatey..."
-      choco install $chocoId -y | Out-Null
-      Ok("$name installed")
-      return
-    } catch {
-      Warn("Install $name manually: $manualUrl")
-    }
+    Warn("Install $name manually: $manualUrl (`n  $($_.Exception.Message))")
   }
+}
+
+# ── Refresh PATH from registry ────────────────────────────────
+function Update-Path {
+  $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
+  $user = [Environment]::GetEnvironmentVariable("Path", "User")
+  $env:Path = "$machine;$user"
 }
 
 # ── Install dependencies ──────────────────────────────────────
 Step "Checking Node.js..."
-try { node --version | Out-Null; Ok("Node.js found") }
-catch { Install-Package "Node.js" "OpenJS.NodeJS.LTS" "nodejs-lts" "https://nodejs.org" }
+try { node --version | Out-Null; $global:nodeOk = $true; Ok("Node.js found") }
+catch { $global:nodeOk = $false; Install-Package "Node.js" "OpenJS.NodeJS.LTS" "https://nodejs.org" }
 
 # Refresh PATH so newly installed tools are available
-$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+Update-Path
+
+# If Node was installed but still not found, locate it manually
+if (-not $global:nodeOk) {
+  try { node --version | Out-Null; $global:nodeOk = $true } catch {}
+}
+if (-not $global:nodeOk) {
+  # Check common install locations
+  $paths = @(
+    "$env:ProgramFiles\nodejs\node.exe",
+    "${env:ProgramFiles(x86)}\nodejs\node.exe",
+    "$env:LOCALAPPDATA\Programs\nodejs\node.exe"
+  )
+  foreach ($p in $paths) {
+    if (Test-Path $p) {
+      $dir = Split-Path $p -Parent
+      $env:Path = "$dir;$env:Path"
+      try { node --version | Out-Null; $global:nodeOk = $true; Ok("Node.js found at $p"); break } catch {}
+    }
+  }
+}
+if (-not $global:nodeOk) { Warn("Node.js not found in PATH — install manually and re-run"); exit 1 }
+
+# Ensure npm is also available
+try { npm --version | Out-Null } catch { Warn("npm not found — reinstall Node.js"); exit 1 }
 
 Step "Checking Git..."
 try { git --version | Out-Null; Ok("Git found") }
-catch { Install-Package "Git" "Git.Git" "git" "https://git-scm.com" }
+catch {
+  Install-Package "Git" "Git.Git" "https://git-scm.com"
+  Update-Path
+  try { git --version | Out-Null } catch { Warn("Install Git from https://git-scm.com and re-run"); exit 1 }
+}
 
 Step "Checking PostgreSQL..."
 try { psql --version | Out-Null; Ok("PostgreSQL found") }
-catch { Install-Package "PostgreSQL" "PostgreSQL.PostgreSQL.16" "postgresql16" "https://postgresql.org/download/windows/" }
+catch {
+  Install-Package "PostgreSQL" "PostgreSQL.PostgreSQL.16" "https://postgresql.org/download/windows/"
+  Update-Path
+  try { psql --version | Out-Null } catch { Warn("Install PostgreSQL from https://postgresql.org/download/windows/ and re-run"); exit 1 }
+}
 
 Step "Checking Redis..."
-try { redis-cli ping 2>$null | Out-Null; Ok("Redis found") }
-catch { Install-Package "Redis (Memurai)" "Memurai.Memurai" "redis-64" "https://github.com/microsoftarchive/redis/releases" }
+try { $pong = redis-cli ping 2>$null; if ($pong -eq "PONG") { Ok("Redis found") } else { throw } }
+catch {
+  Install-Package "Redis (Memurai)" "Memurai.Memurai" "https://github.com/microsoftarchive/redis/releases"
+}
 
 # ── Clone repo ────────────────────────────────────────────────
 Step "Setting up SquidOSS..."
 if (Test-Path $DIR) {
-  Set-Location $DIR
-  git pull | Out-Null
+  Push-Location $DIR
+  git pull 2>&1 | Out-Null
   Ok("Updated existing repo at $DIR")
 } else {
-  git clone $REPO $DIR | Out-Null
-  Set-Location $DIR
+  git clone $REPO $DIR 2>&1 | Out-Null
+  Push-Location $DIR
+  if (-not (Test-Path "$DIR\crd.js")) { Warn("Clone failed — check git"); exit 1 }
   Ok("Cloned SquidOSS to $DIR")
 }
 
 # ── Install npm deps ──────────────────────────────────────────
 Step "Installing npm dependencies..."
-Set-Location "$DIR\backend"
-npm install | Out-Null
+Write-Host "  (this may take a while on first run...)" -ForegroundColor Gray
+Push-Location "$DIR\backend"
+npm install --loglevel error 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { Warn("Backend npm install failed — run 'cd backend && npm install' manually"); exit 1 }
 Ok("Backend deps installed")
-Set-Location "$DIR"
-npm install | Out-Null
+Push-Location "$DIR"
+npm install --loglevel error 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { Warn("Frontend npm install failed — run 'npm install' manually"); exit 1 }
 Ok("Frontend deps installed")
 
 # ── Configure ─────────────────────────────────────────────────
 Step "Configuring environment..."
 node crd.js configure
+if ($LASTEXITCODE -ne 0) { Warn("Configure failed"); exit 1 }
 Ok("Environment configured")
 
 # ── Migrate ───────────────────────────────────────────────────
 Step "Running database migration..."
+Write-Host "  (make sure PostgreSQL service is running...)" -ForegroundColor Gray
 node crd.js migrate
+if ($LASTEXITCODE -ne 0) { Warn("Migration failed — check PostgreSQL is running"); exit 1 }
 Ok("Database migrated")
 
 # ── Launcher ──────────────────────────────────────────────────
@@ -101,6 +153,7 @@ node crd.js launcher
 Ok("Launcher created")
 
 # ── Done ──────────────────────────────────────────────────────
+Pop-Location
 Write-Host ""
 Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "║      SquidOSS Installed!             ║" -ForegroundColor Cyan
