@@ -4,10 +4,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatFileSize } from '@/lib/utils';
 import FileCardMenu from '@/components/FileCardMenu';
+import { isFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { 
   Image, Video, Music, Archive,
   Code, FileJson, FileText, Lock, Share2
 } from '@/lib/icon-map';
+
+const sharingEnabled = isFeatureEnabled('sharing')
 
 interface FileItem {
   id: string;
@@ -117,7 +120,7 @@ const EnhancedFileCard: React.FC<EnhancedFileCardProps> = ({
               {file.encrypted && (
                 <Lock className="w-3 h-3 text-sky-400 ml-1" />
               )}
-              {file.shared && (
+              {sharingEnabled && file.shared && (
                 <Share2 className="w-3 h-3 text-violet-400 ml-0.5" />
               )}
             </div>
@@ -146,7 +149,7 @@ const EnhancedFileCard: React.FC<EnhancedFileCardProps> = ({
                 Encrypted
               </Badge>
             )}
-            {file.shared && (
+            {sharingEnabled && file.shared && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 rounded-md font-normal border-border/50">
                 Shared
               </Badge>

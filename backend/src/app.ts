@@ -21,6 +21,7 @@ import rpcRoutes from './routes/rpc.js'
 import storageRoutes from './routes/storage.js'
 import passkeyRoutes from './routes/passkey.js'
 import healthRoutes from './routes/health.js'
+import systemRoutes from './routes/system.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -64,6 +65,9 @@ export async function buildApp() {
   await app.register(queryRoutes)
   await app.register(rpcRoutes)
   await app.register(storageRoutes)
+
+  // System (drives, etc.)
+  await app.register(systemRoutes)
 
   // Root API info
   app.get('/api/v1', async () => ({

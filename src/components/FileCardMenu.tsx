@@ -10,10 +10,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreVertical, Eye, Download, Share2, Info, Trash2, Archive, History, XCircle, Settings, Code2 } from '@/lib/icon-map';
 import { useToast } from '@/hooks/use-toast';
+import { isFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { createFileShare, revokeFileShare, getFileShareId } from '@/lib/api';
 import ShareManagementDialog from './ShareManagementDialog';
 import { EnhancedShareDialog } from './EnhancedShareDialog';
 import { buildPublicUrl } from '@/lib/appLinks';
+
+const sharingEnabled = isFeatureEnabled('sharing')
 
 interface FileCardMenuProps {
   file: any;
@@ -150,12 +153,14 @@ const FileCardMenu: React.FC<FileCardMenuProps> = ({
           </DropdownMenuItem>
         )}
         
-        <DropdownMenuItem onClick={handleShare} disabled={loading}>
-          <Share2 className="mr-2 h-4 w-4" />
-          {loading ? 'Creating...' : isShared ? 'Copy Share Link' : 'Share'}
-        </DropdownMenuItem>
+        {sharingEnabled && (
+          <DropdownMenuItem onClick={handleShare} disabled={loading}>
+            <Share2 className="mr-2 h-4 w-4" />
+            {loading ? 'Creating...' : isShared ? 'Copy Share Link' : 'Share'}
+          </DropdownMenuItem>
+        )}
         
-        {isShared && (
+        {sharingEnabled && isShared && (
           <DropdownMenuItem onClick={handleRevokeShare} disabled={loading}>
             <XCircle className="mr-2 h-4 w-4" />
             {loading ? 'Revoking...' : 'Revoke Share'}
@@ -164,12 +169,14 @@ const FileCardMenu: React.FC<FileCardMenuProps> = ({
         
         <DropdownMenuSeparator />
         
-        <DropdownMenuItem onClick={handleMenuAction(() => {
-          setShowShareDialog(true);
-        }, 'Manage All Shares')}>
-          <Settings className="mr-2 h-4 w-4" />
-          Manage All Shares
-        </DropdownMenuItem>
+        {sharingEnabled && (
+          <DropdownMenuItem onClick={handleMenuAction(() => {
+            setShowShareDialog(true);
+          }, 'Manage All Shares')}>
+            <Settings className="mr-2 h-4 w-4" />
+            Manage All Shares
+          </DropdownMenuItem>
+        )}
 
         {onOpenInCbCode && (
           <DropdownMenuItem onClick={handleMenuAction(onOpenInCbCode, 'Open in cbCode')}>

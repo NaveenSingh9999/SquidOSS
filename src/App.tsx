@@ -203,7 +203,6 @@ const AppContent = () => {
           <Route path="/auth/callback" element={<AnimatedRoute><RouteSuspense><OAuthCallback /></RouteSuspense></AnimatedRoute>} />
           <Route path="/oauth/callback" element={<AnimatedRoute><RouteSuspense><OAuthCallback /></RouteSuspense></AnimatedRoute>} />
           <Route path="/dashboard" element={
-            <AnimatedRoute>
             <RouteSuspense>
               <ProtectedRoute>
                 <ErrorBoundary>
@@ -211,7 +210,6 @@ const AppContent = () => {
                 </ErrorBoundary>
               </ProtectedRoute>
             </RouteSuspense>
-            </AnimatedRoute>
           } />
           <Route path="/profile" element={
             <AnimatedRoute>

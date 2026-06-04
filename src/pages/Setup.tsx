@@ -1,13 +1,16 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Switch } from '@/components/ui/switch'
 import { Card } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  ArrowLeft, ArrowRight, Check, Shield, HardDrive, Github,
+  ArrowLeft, ArrowRight, Check, Shield, HardDrive,
   Cloud, Globe, Server, UserPlus, Users, Key, Sparkles,
+  Eye, Share2, BarChart3, FileText, Wifi,
 } from '@/lib/icon-map'
 
 const API_URL = import.meta.env.VITE_SQUIDOSS_API_URL || 'http://localhost:3000'
@@ -17,39 +20,37 @@ interface SetupData {
   adminPassword: string
   adminName: string
   additionalUsers: Array<{ email: string; password: string; name: string }>
-  storageProvider: 'github' | 'local' | 's3' | 'r2' | null
+  storageProvider: 'local' | 's3' | 'r2' | null
   providerConfig: Record<string, string>
   ossName: string
+  features: {
+    sharing: boolean
+    analytics: boolean
+    workspaces: boolean
+    versionHistory: boolean
+    encryption: boolean
+  }
 }
 
 const STORAGE_PROVIDERS = [
   {
-    id: 'github' as const,
-    title: 'GitHub',
-    description: 'Use GitHub repositories as storage backend',
-    icon: Github,
-    fields: [
-      { key: 'token', label: 'GitHub Personal Access Token', type: 'password', placeholder: 'ghp_...', hint: 'Create a token with repo, workflow, and packages scopes' },
-      { key: 'username', label: 'GitHub Username', type: 'text', placeholder: 'your-username' },
-    ],
-  },
-  {
     id: 'local' as const,
     title: 'Local Storage',
-    description: 'Store files on this device',
+    description: 'Store files on local drives or partitions',
     icon: HardDrive,
     fields: [
-      { key: 'path', label: 'Storage Path', type: 'text', placeholder: '/data/storage', hint: 'Absolute path to store files' },
+      { key: 'path', label: 'Storage Path', type: 'text', placeholder: '/mnt/data', hint: 'Mount point or directory for file storage' },
+      { key: 'mount', label: 'Mount Device (optional)', type: 'text', placeholder: '/dev/sda1', hint: 'e.g., /dev/sda1, /dev/nvme0n1p1' },
     ],
   },
   {
     id: 's3' as const,
     title: 'AWS S3',
-    description: 'Amazon Web Services S3 compatible storage',
+    description: 'Amazon S3 compatible object storage',
     icon: Cloud,
     fields: [
       { key: 'accessKeyId', label: 'Access Key ID', type: 'text', placeholder: 'AKIA...' },
-      { key: 'secretAccessKey', label: 'Secret Access Key', type: 'password', placeholder: '••••••••' },
+      { key: 'secretAccessKey', label: 'Secret Access Key', type: 'password', placeholder: '...' },
       { key: 'bucket', label: 'Bucket Name', type: 'text', placeholder: 'my-squidoss-storage' },
       { key: 'region', label: 'Region', type: 'text', placeholder: 'us-east-1' },
     ],
@@ -57,27 +58,33 @@ const STORAGE_PROVIDERS = [
   {
     id: 'r2' as const,
     title: 'Cloudflare R2',
-    description: 'Cloudflare R2 object storage',
+    description: 'Cloudflare R2 object storage (free egress)',
     icon: Globe,
     fields: [
       { key: 'accountId', label: 'Account ID', type: 'text', placeholder: '...' },
       { key: 'accessKeyId', label: 'Access Key ID', type: 'text', placeholder: '...' },
-      { key: 'secretAccessKey', label: 'Secret Access Key', type: 'password', placeholder: '••••••••' },
+      { key: 'secretAccessKey', label: 'Secret Access Key', type: 'password', placeholder: '...' },
       { key: 'bucket', label: 'Bucket Name', type: 'text', placeholder: 'my-squidoss-storage' },
     ],
   },
+]
+
+const FEATURES = [
+  { key: 'sharing' as const, label: 'File Sharing', desc: 'Share files via links with passwords & expiry', icon: Share2 },
+  { key: 'workspaces' as const, label: 'Workspaces', desc: 'Team collaboration with role-based access', icon: Users },
+  { key: 'analytics' as const, label: 'Analytics', desc: 'Usage statistics and file access logs', icon: BarChart3 },
+  { key: 'versionHistory' as const, label: 'Version History', desc: 'Track and restore previous file versions', icon: FileText },
+  { key: 'encryption' as const, label: 'Client Encryption', desc: 'End-to-end encryption with BYOK', icon: Eye },
 ]
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center justify-center gap-2 mb-8">
       {Array.from({ length: total }, (_, i) => (
-        <div
-          key={i}
+        <div key={i}
           className={`h-2 rounded-full transition-all duration-500 ${
             i === current ? 'w-8 bg-primary' : i < current ? 'w-2 bg-primary/50' : 'w-2 bg-muted'
-          }`}
-        />
+          }`} />
       ))}
     </div>
   )
@@ -88,6 +95,7 @@ export default function Setup() {
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [animate, setAnimate] = useState(false)
+  const [drives, setDrives] = useState<{ device: string; mount: string; size: string }[]>([])
   const [data, setData] = useState<SetupData>({
     adminEmail: '',
     adminPassword: '',
@@ -96,22 +104,28 @@ export default function Setup() {
     storageProvider: null,
     providerConfig: {},
     ossName: '',
+    features: { sharing: false, analytics: true, workspaces: false, versionHistory: true, encryption: false },
   })
 
+  useEffect(() => {
+    fetchDrives()
+  }, [])
+
+  async function fetchDrives() {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/system/drives`)
+      if (res.ok) setDrives(await res.json())
+    } catch {}
+  }
+
   const steps = [
-    // Step 0: Welcome
-    { title: 'Welcome to SquidOSS', desc: 'Let\'s set up your private cloud storage' },
-    // Step 1: Admin account
+    { title: 'Welcome to SquidOSS', desc: 'Set up your private cloud storage' },
     { title: 'Create Administrator', desc: 'Set up the admin account' },
-    // Step 2: Additional users
-    { title: 'Add Users', desc: 'Create additional user accounts (optional)' },
-    // Step 3: Choose storage provider
-    { title: 'Storage Provider', desc: 'Select where to store your files' },
-    // Step 4: Provider config
-    { title: 'Provider Setup', desc: 'Configure your storage provider' },
-    // Step 5: Name your SquidOSS
-    { title: 'Name Your Machine', desc: 'Give your SquidOSS a unique name' },
-    // Step 6: Setup animation
+    { title: 'Add Users', desc: 'Create additional users (optional)' },
+    { title: 'Storage Provider', desc: 'Choose where to store files' },
+    { title: 'Provider Setup', desc: 'Configure storage details' },
+    { title: 'Features', desc: 'Enable or disable features' },
+    { title: 'Name Your Machine', desc: 'Give your server a name' },
     { title: 'Setting Up...', desc: 'Applying configuration' },
   ]
 
@@ -137,33 +151,27 @@ export default function Setup() {
     setData(d => ({ ...d, additionalUsers: d.additionalUsers.filter((_, i) => i !== idx) }))
   }
 
+  function toggleFeature(key: keyof typeof data.features) {
+    setData(d => ({ ...d, features: { ...d.features, [key]: !d.features[key] } }))
+  }
+
   const selectedProvider = STORAGE_PROVIDERS.find(p => p.id === data.storageProvider)
 
   async function handleSetup() {
     setLoading(true)
     setAnimate(true)
-
     try {
-      // Register admin
       const regRes = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: data.adminEmail,
-          password: data.adminPassword,
-          fullName: data.adminName,
-        }),
+        body: JSON.stringify({ email: data.adminEmail, password: data.adminPassword, fullName: data.adminName }),
       })
       const regData = await regRes.json()
       if (!regData.token) throw new Error(regData.error || 'Registration failed')
-
-      // Store config
       localStorage.setItem('squidoss_token', regData.token)
-
-      // Store oss name
       localStorage.setItem('squidoss_name', data.ossName)
+      localStorage.setItem('squidoss_features', JSON.stringify(data.features))
 
-      // Create additional users
       for (const user of data.additionalUsers) {
         if (user.email && user.password) {
           await fetch(`${API_URL}/auth/register`, {
@@ -174,18 +182,11 @@ export default function Setup() {
         }
       }
 
-      // Configure storage provider
       if (data.storageProvider && data.storageProvider !== 'local') {
         await fetch(`${API_URL}/api/v1/storage/providers`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${regData.token}`,
-          },
-          body: JSON.stringify({
-            providerType: data.storageProvider,
-            ...data.providerConfig,
-          }),
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${regData.token}` },
+          body: JSON.stringify({ providerType: data.storageProvider, ...data.providerConfig }),
         })
       }
 
@@ -193,7 +194,6 @@ export default function Setup() {
     } catch (e: any) {
       console.error('Setup error:', e)
     }
-
     setLoading(false)
     setTimeout(() => navigate('/auth'), 1500)
   }
@@ -201,16 +201,14 @@ export default function Setup() {
   if (step === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'hsl(222 47% 9.5%)' }}>
-        <div className="w-full max-w-lg text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="w-full max-w-lg text-center space-y-8">
           <div className="space-y-4">
             <div className="mx-auto w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
               <Shield className="w-10 h-10 text-primary" />
             </div>
             <h1 className="text-4xl font-bold tracking-tight">SquidOSS</h1>
             <p className="text-xl text-muted-foreground">Your private cloud. Your rules.</p>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              This wizard will guide you through setting up your personal cloud storage server in just a few minutes.
-            </p>
+            <p className="text-muted-foreground max-w-md mx-auto">Configure your cloud storage server in just a few minutes.</p>
           </div>
           <Button size="lg" onClick={() => setStep(1)} className="gap-2">
             Get Started <ArrowRight className="w-4 h-4" />
@@ -230,21 +228,8 @@ export default function Setup() {
               <Sparkles className="w-12 h-12 text-primary" />
             </div>
             <h2 className="text-3xl font-bold">Setting up {data.ossName || 'SquidOSS'}...</h2>
-            <p className="text-muted-foreground">Configuring your storage, accounts, and security.</p>
-            <div className="flex justify-center gap-2">
-              {['Accounts', 'Storage', 'Security', 'Keys'].map((s, i) => (
-                <div key={s} className={`px-3 py-1.5 rounded-full text-sm border transition-all duration-500 delay-${i * 200} ${
-                  animate ? 'border-primary/50 text-primary bg-primary/5' : 'border-border text-muted-foreground'
-                }`}>
-                  {s}
-                </div>
-              ))}
-            </div>
-            {!loading && (
-              <Button onClick={() => navigate('/auth')} className="mt-4">
-                Continue to Login
-              </Button>
-            )}
+            <p className="text-muted-foreground">Applying your configuration.</p>
+            {!loading && <Button onClick={() => navigate('/auth')}>Continue to Login</Button>}
           </div>
         </div>
       </div>
@@ -255,13 +240,12 @@ export default function Setup() {
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'hsl(222 47% 9.5%)' }}>
       <div className="w-full max-w-lg space-y-6">
         <StepIndicator current={step} total={totalSteps} />
-
         <div className="text-center space-y-2 mb-6">
           <h2 className="text-2xl font-bold">{steps[step].title}</h2>
           <p className="text-muted-foreground">{steps[step].desc}</p>
         </div>
 
-        {/* Step 1: Admin Account */}
+        {/* Step 1: Admin */}
         {step === 1 && (
           <Card className="p-6 space-y-4" style={{ background: 'hsl(222 35% 11.5%)', border: '1px solid hsl(220 20% 17%)' }}>
             <div className="space-y-2">
@@ -274,7 +258,7 @@ export default function Setup() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="••••••••" value={data.adminPassword} onChange={e => update('adminPassword', e.target.value)} />
+              <Input id="password" type="password" placeholder="..." value={data.adminPassword} onChange={e => update('adminPassword', e.target.value)} />
             </div>
           </Card>
         )}
@@ -295,7 +279,7 @@ export default function Setup() {
                 </div>
                 <div className="space-y-2">
                   <Label>Password</Label>
-                  <Input type="password" placeholder="••••••••" value={user.password} onChange={e => updateUser(idx, 'password', e.target.value)} />
+                  <Input type="password" placeholder="..." value={user.password} onChange={e => updateUser(idx, 'password', e.target.value)} />
                 </div>
               </div>
             ))}
@@ -311,16 +295,14 @@ export default function Setup() {
             {STORAGE_PROVIDERS.map(provider => {
               const Icon = provider.icon
               return (
-                <button
-                  key={provider.id}
+                <button key={provider.id}
                   onClick={() => update('storageProvider', provider.id)}
                   className={`flex items-center gap-4 p-4 rounded-xl text-left transition-all ${
                     data.storageProvider === provider.id
                       ? 'border-primary border-2 bg-primary/5'
                       : 'border border-border hover:border-primary/50'
                   }`}
-                  style={{ background: data.storageProvider === provider.id ? 'hsl(222 35% 11.5%)' : 'hsl(222 35% 11.5%)' }}
-                >
+                  style={{ background: 'hsl(222 35% 11.5%)' }}>
                   <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                     <Icon className="w-6 h-6 text-primary" />
                   </div>
@@ -344,40 +326,74 @@ export default function Setup() {
               </div>
               <div>
                 <div className="font-semibold">{selectedProvider.title}</div>
-                <div className="text-sm text-muted-foreground">Configure your storage provider</div>
+                <div className="text-sm text-muted-foreground">Configure your storage</div>
               </div>
             </div>
+            {/* Local storage: show detected drives */}
+            {data.storageProvider === 'local' && drives.length > 0 && (
+              <div className="space-y-2">
+                <Label>Detected Drives</Label>
+                <div className="grid gap-2 max-h-48 overflow-y-auto">
+                  {drives.map(d => (
+                    <button key={d.device}
+                      onClick={() => update('providerConfig', { ...data.providerConfig, path: d.mount, mount: d.device })}
+                      className={`flex items-center justify-between p-3 rounded-lg text-sm border ${
+                        data.providerConfig.mount === d.device ? 'border-primary bg-primary/5' : 'border-border'
+                      }`}>
+                      <span className="font-mono">{d.device}</span>
+                      <span className="text-muted-foreground">{d.size}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {selectedProvider.fields.map(field => (
               <div key={field.key} className="space-y-2">
                 <Label>{field.label}</Label>
-                <Input
-                  type={field.type}
-                  placeholder={field.placeholder}
+                <Input type={field.type} placeholder={field.placeholder}
                   value={data.providerConfig[field.key] || ''}
-                  onChange={e => update('providerConfig', { ...data.providerConfig, [field.key]: e.target.value })}
-                />
+                  onChange={e => update('providerConfig', { ...data.providerConfig, [field.key]: e.target.value })} />
                 {field.hint && <p className="text-xs text-muted-foreground">{field.hint}</p>}
               </div>
             ))}
           </Card>
         )}
 
-        {/* Step 5: Name */}
+        {/* Step 5: Features */}
         {step === 5 && (
+          <Card className="p-6 space-y-4" style={{ background: 'hsl(222 35% 11.5%)', border: '1px solid hsl(220 20% 17%)' }}>
+            <p className="text-sm text-muted-foreground mb-2">Enable or disable features for all users. Can be overridden per user later.</p>
+            {FEATURES.map(f => {
+              const Icon = f.icon
+              return (
+                <div key={f.key} className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'hsl(220 20% 14%)' }}>
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-5 h-5 text-primary shrink-0" />
+                    <div>
+                      <div className="font-medium text-sm">{f.label}</div>
+                      <div className="text-xs text-muted-foreground">{f.desc}</div>
+                    </div>
+                  </div>
+                  <Switch checked={data.features[f.key]} onCheckedChange={() => toggleFeature(f.key)} />
+                </div>
+              )
+            })}
+          </Card>
+        )}
+
+        {/* Step 6: Name */}
+        {step === 6 && (
           <Card className="p-6 space-y-4 text-center" style={{ background: 'hsl(222 35% 11.5%)', border: '1px solid hsl(220 20% 17%)' }}>
             <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
               <Server className="w-8 h-8 text-primary" />
             </div>
             <div className="space-y-2">
               <Label className="text-lg">Name your SquidOSS machine</Label>
-              <p className="text-sm text-muted-foreground">This name will identify your server</p>
+              <p className="text-sm text-muted-foreground">This name identifies your server</p>
             </div>
-            <Input
-              placeholder="e.g., My Cloud, Home Server, DataBox"
-              value={data.ossName}
-              onChange={e => update('ossName', e.target.value)}
-              className="text-center text-lg"
-            />
+            <Input placeholder="e.g., My Cloud, Home Server, DataBox"
+              value={data.ossName} onChange={e => update('ossName', e.target.value)}
+              className="text-center text-lg" />
           </Card>
         )}
 

@@ -32,14 +32,16 @@ import {
   AlertTriangle
 } from '@/lib/icon-map';
 import { useToast } from '@/hooks/use-toast';
+import { isFeatureEnabled } from '@/hooks/useFeatureFlags';
 import { createFileShare, revokeFileShare, getFileShareId } from '@/lib/api';
 import ShareManagementDialog from './ShareManagementDialog';
 import { EnhancedShareDialog } from './EnhancedShareDialog';
 import ExtractionDialog from './ExtractionDialog';
-
 import { isNativePlatform, haptics } from '@/utils/mobile';
 import { shareLink, canShare } from '@/services/mobileShareService';
 import { buildPublicUrl } from '@/lib/appLinks';
+
+const sharingEnabled = isFeatureEnabled('sharing')
 
 interface FileActionMenuProps {
   file: {
@@ -235,12 +237,14 @@ const FileActionMenu: React.FC<FileActionMenuProps> = ({
           Copy Link
         </DropdownMenuItem>
         
-        <DropdownMenuItem onClick={handleAction(() => handleShare(), 'Share')} disabled={loading}>
-          <Share2 className="mr-2 h-4 w-4" />
-          {loading ? 'Processing...' : isShared ? 'Manage Share' : 'Share File'}
-        </DropdownMenuItem>
+        {sharingEnabled && (
+          <DropdownMenuItem onClick={handleAction(() => handleShare(), 'Share')} disabled={loading}>
+            <Share2 className="mr-2 h-4 w-4" />
+            {loading ? 'Processing...' : isShared ? 'Manage Share' : 'Share File'}
+          </DropdownMenuItem>
+        )}
         
-        {isShared && (
+        {sharingEnabled && isShared && (
           <DropdownMenuItem onClick={handleAction(() => handleRevokeShare(), 'Revoke Share')} disabled={loading}>
             <XCircle className="mr-2 h-4 w-4" />
             {loading ? 'Revoking...' : 'Revoke Share'}
@@ -249,12 +253,14 @@ const FileActionMenu: React.FC<FileActionMenuProps> = ({
         
         <DropdownMenuSeparator />
         
-        <DropdownMenuItem onClick={handleAction(() => {
-          setShowShareDialog(true);
-        }, 'Manage All Shares')}>
-          <Settings className="mr-2 h-4 w-4" />
-          Manage All Shares
-        </DropdownMenuItem>
+        {sharingEnabled && (
+          <DropdownMenuItem onClick={handleAction(() => {
+            setShowShareDialog(true);
+          }, 'Manage All Shares')}>
+            <Settings className="mr-2 h-4 w-4" />
+            Manage All Shares
+          </DropdownMenuItem>
+        )}
         
         <DropdownMenuItem onClick={handleAction(() => {
           window.open(`/file/${file.id}`, '_blank');
