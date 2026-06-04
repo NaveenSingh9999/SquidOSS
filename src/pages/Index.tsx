@@ -7,18 +7,25 @@ const API_URL = import.meta.env.VITE_SQUIDOSS_API_URL || 'http://localhost:3000'
 export default function Index() {
   const { user, loading } = useAuth()
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null)
+  const [dbOnline, setDbOnline] = useState(false)
 
   useEffect(() => {
-    async function checkSetup() {
+    async function check() {
       try {
-        const res = await fetch(`${API_URL}/health`)
-        const data = await res.json()
-        setSetupComplete(data.database === 'connected')
+        const [healthRes, statusRes] = await Promise.all([
+          fetch(`${API_URL}/health`),
+          fetch(`${API_URL}/auth/setup-status`).catch(() => ({ json: () => ({ setupComplete: false }) })),
+        ])
+        const health = await healthRes.json()
+        const status = await statusRes.json()
+        setDbOnline(health.database === 'connected')
+        setSetupComplete(status.setupComplete || !!localStorage.getItem('squidoss_setup_complete'))
       } catch {
-        setSetupComplete(false)
+        setDbOnline(false)
+        setSetupComplete(!!localStorage.getItem('squidoss_setup_complete'))
       }
     }
-    checkSetup()
+    check()
   }, [])
 
   if (loading || setupComplete === null) {
@@ -29,17 +36,12 @@ export default function Index() {
     )
   }
 
-  // Check local storage flag for setup completion
-  const hasLocalSetup = localStorage.getItem('squidoss_setup_complete')
-
   if (user) {
     return <Navigate to="/dashboard" replace />
   }
 
-  if (!hasLocalSetup) {
-    // Check if any users exist (first boot detection)
-    const hasUsers = setupComplete
-    if (!hasUsers) {
+  if (!setupComplete) {
+    if (!dbOnline) {
       return <Navigate to="/setup" replace />
     }
   }
