@@ -158,7 +158,8 @@ async function build() {
   await sh(detectPM(BACKEND), ['install', '--no-optional'], BACKEND)
 
   log('Installing frontend dependencies...')
-  await sh(detectPM(ROOT), ['install', '--no-optional'], ROOT)
+  // Don't use --no-optional here — rollup needs native binaries
+  await sh(detectPM(ROOT), ['install'], ROOT)
 
   await migrate()
   log('Build complete')
