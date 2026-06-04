@@ -16,7 +16,13 @@ import {
   FileText, Archive, Lock,
 } from '@/lib/icon-map'
 
-const API_URL = (import.meta.env.VITE_SQUIDOSS_API_URL || 'http://localhost:3000').replace(/\/+$/, '')
+const API_URL = (() => {
+  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
+  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev')) {
+    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
+  }
+  return 'http://localhost:3000'
+})().replace(/\/+$/, '')
 
 interface FileItem {
   id: string; name: string; type?: string; size?: number; created_at: string
