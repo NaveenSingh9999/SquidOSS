@@ -1,6 +1,9 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
+import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
 import { config } from './config.js'
 import { testConnection, sql } from './db/index.js'
 import { connectRedis } from './services/redis.js'
@@ -264,6 +267,22 @@ export async function startServer() {
     process.exit(1)
   }
   app.log.info('Database connected')
+
+  // Auto-run migrations if schema doesn't exist
+  try {
+    const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS exists`
+    if (!hasAuth?.exists) {
+      app.log.info('Schema not found — running migrations...')
+      const __dirname = dirname(fileURLToPath(import.meta.url))
+      const migration = readFileSync(join(__dirname, '../migrations/001_schema.sql'), 'utf-8')
+      await sql.unsafe(migration as any)
+      app.log.info('Migrations applied successfully')
+    } else {
+      app.log.info('Schema already up to date')
+    }
+  } catch (err: any) {
+    app.log.warn(`Migration check failed (non-fatal): ${err.message}`)
+  }
 
   // Redis is optional - start gracefully
   const redisOk = await connectRedis()
