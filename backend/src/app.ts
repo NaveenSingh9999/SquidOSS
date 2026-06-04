@@ -77,44 +77,45 @@ export async function buildApp() {
         return { schema: 'already_exists' }
       }
 
-      await sql.unsafe(`
-        CREATE SCHEMA IF NOT EXISTS auth;
-        CREATE SCHEMA IF NOT EXISTS public;
-        CREATE SCHEMA IF NOT EXISTS extensions;
+      // Execute each statement separately (postgres.js unsafe doesn't support multi-statement)
+      const statements = [
+        'CREATE SCHEMA IF NOT EXISTS auth',
+        'CREATE SCHEMA IF NOT EXISTS public',
+        'CREATE SCHEMA IF NOT EXISTS extensions',
+        "CREATE TABLE IF NOT EXISTS auth.users (" +
+            "id uuid NOT NULL DEFAULT gen_random_uuid()," +
+            "email text NOT NULL," +
+            "encrypted_password text NOT NULL," +
+            "role text DEFAULT 'user'," +
+            "created_at timestamp with time zone DEFAULT now()," +
+            "updated_at timestamp with time zone DEFAULT now()," +
+            "PRIMARY KEY (id)," +
+            "CONSTRAINT users_email_key UNIQUE (email)" +
+        ")",
+        "CREATE TABLE IF NOT EXISTS public.profiles (" +
+            "id uuid PRIMARY KEY REFERENCES auth.users(id)," +
+            "full_name text," +
+            "avatar_url text," +
+            "storage_used bigint DEFAULT 0," +
+            "is_admin boolean DEFAULT false," +
+            "is_premium boolean DEFAULT false," +
+            "pin_enabled boolean DEFAULT false," +
+            "created_at timestamp with time zone DEFAULT now()" +
+        ")",
+        "CREATE TABLE IF NOT EXISTS public.app_settings (" +
+            "key text NOT NULL," +
+            "value text NOT NULL," +
+            "user_id uuid REFERENCES auth.users(id)," +
+            "created_at timestamp with time zone DEFAULT now()," +
+            "updated_at timestamp with time zone DEFAULT now()," +
+            "PRIMARY KEY (key, COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid))" +
+        ")",
+        'CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions',
+      ]
 
-        CREATE TABLE IF NOT EXISTS auth.users (
-            id uuid NOT NULL DEFAULT gen_random_uuid(),
-            email text NOT NULL,
-            encrypted_password text NOT NULL,
-            role text DEFAULT 'user',
-            created_at timestamp with time zone DEFAULT now(),
-            updated_at timestamp with time zone DEFAULT now(),
-            PRIMARY KEY (id),
-            CONSTRAINT users_email_key UNIQUE (email)
-        );
-
-        CREATE TABLE IF NOT EXISTS public.profiles (
-            id uuid PRIMARY KEY REFERENCES auth.users(id),
-            full_name text,
-            avatar_url text,
-            storage_used bigint DEFAULT 0,
-            is_admin boolean DEFAULT false,
-            is_premium boolean DEFAULT false,
-            pin_enabled boolean DEFAULT false,
-            created_at timestamp with time zone DEFAULT now()
-        );
-
-        CREATE TABLE IF NOT EXISTS public.app_settings (
-            key text NOT NULL,
-            value text NOT NULL,
-            user_id uuid REFERENCES auth.users(id),
-            created_at timestamp with time zone DEFAULT now(),
-            updated_at timestamp with time zone DEFAULT now(),
-            PRIMARY KEY (key, COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid))
-        );
-
-        CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
-      `)
+      for (const stmt of statements) {
+        await sql.unsafe(stmt)
+      }
 
       return { schema: 'created' }
     } catch (err: any) {
