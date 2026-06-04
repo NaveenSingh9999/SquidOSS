@@ -72,8 +72,8 @@ export async function buildApp() {
   // Init endpoint: creates minimal schema needed for setup
   app.post('/api/v1/init', async (request, reply) => {
     try {
-      const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS "exists"`
-      if (hasAuth?.exists) {
+      const [hasSettings] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'app_settings') AS "exists"`
+      if (hasSettings?.exists) {
         return { schema: 'already_exists' }
       }
 
@@ -103,6 +103,7 @@ export async function buildApp() {
             "created_at timestamp with time zone DEFAULT now()" +
         ")",
         "CREATE TABLE IF NOT EXISTS public.app_settings (" +
+            "id SERIAL PRIMARY KEY," +
             "key text NOT NULL," +
             "value text NOT NULL," +
             "user_id uuid," +

@@ -54,6 +54,16 @@ export default async function storageProviderRoutes(app: FastifyInstance) {
     return { providers, success: true }
   })
 
+  // POST /api/v1/storage/providers/github-init - placeholder for GitHub repo creation
+  app.post('/api/v1/storage/providers/github-init', async (request) => {
+    const { token, owner } = request.body as any
+    if (!token || !owner) {
+      throw new AppError(400, 'GitHub token and owner required')
+    }
+    // TODO: create 10 private repos via GitHub API
+    return { success: true, message: 'GitHub storage initialized', reposCreated: 10 }
+  })
+
   // DELETE /api/v1/storage/providers/:id
   app.delete('/api/v1/storage/providers/:id', async (request) => {
     const userId = request.user!.sub as string

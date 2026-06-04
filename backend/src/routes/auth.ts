@@ -55,20 +55,15 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/auth/setup-complete', { preHandler: [fastify.authenticate] }, async (request) => {
     const { sub } = request.user as any
     const { name } = request.body as any
-    // Store in app_settings table
     await sql`
       INSERT INTO app_settings (key, value, user_id)
       VALUES ('setup_complete', 'true', ${sub})
-      ON CONFLICT (key, user_id) DO UPDATE SET value = 'true', updated_at = NOW()
     `
     if (name) {
-      const existing = await sql`SELECT id FROM app_settings WHERE key = 'server_name' AND user_id = ${sub}`
-      if (existing.length === 0) {
-        await sql`
-          INSERT INTO app_settings (key, value, user_id)
-          VALUES ('server_name', ${name}, ${sub})
-        `
-      }
+      await sql`
+        INSERT INTO app_settings (key, value, user_id)
+        VALUES ('server_name', ${name}, ${sub})
+      `
     }
     return { ok: true }
   })
