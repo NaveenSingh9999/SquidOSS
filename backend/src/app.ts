@@ -72,6 +72,33 @@ export async function buildApp() {
   // System (drives, etc.)
   await app.register(systemRoutes)
 
+  // Init endpoint: runs migrations if schema doesn't exist
+  app.post('/api/v1/init', async (request, reply) => {
+    try {
+      const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS "exists"`
+      if (hasAuth?.exists) {
+        return { schema: 'already_exists' }
+      }
+      const paths = [
+        join(process.cwd(), 'backend', 'migrations', '001_schema.sql'),
+        join(process.cwd(), 'migrations', '001_schema.sql'),
+      ]
+      let migrationFile = ''
+      for (const p of paths) {
+        try { migrationFile = readFileSync(p, 'utf-8'); break } catch {}
+      }
+      if (!migrationFile) {
+        reply.status(500)
+        return { error: 'Migration file not found' }
+      }
+      await sql.unsafe(migrationFile)
+      return { schema: 'created' }
+    } catch (err: any) {
+      reply.status(500)
+      return { error: err.message }
+    }
+  })
+
   // Root API info
   app.get('/api/v1', async () => ({
     message: 'SquidOSS API v1.0',
@@ -273,17 +300,32 @@ export async function startServer() {
     const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS "exists"`
     if (!hasAuth?.exists) {
       app.log.info('Schema tables not found — running migrations...')
-      const migrationPath = join(process.cwd(), 'migrations', '001_schema.sql')
-      app.log.info(`Reading migration file: ${migrationPath}`)
-      const migration = readFileSync(migrationPath, 'utf-8')
-      await sql.unsafe(migration)
-      app.log.info('Migrations applied successfully')
+      // Try multiple paths for the migration file
+      const paths = [
+        join(process.cwd(), 'backend', 'migrations', '001_schema.sql'),
+        join(process.cwd(), 'migrations', '001_schema.sql'),
+        join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'migrations', '001_schema.sql'),
+      ]
+      let migrationFile = ''
+      for (const p of paths) {
+        try {
+          migrationFile = readFileSync(p, 'utf-8')
+          app.log.info(`Found migration at ${p}`)
+          break
+        } catch {}
+      }
+      if (!migrationFile) {
+        app.log.error('Migration file not found in any expected path')
+      } else {
+        await sql.unsafe(migrationFile)
+        app.log.info('Migrations applied successfully')
+      }
     } else {
       app.log.info('Schema already up to date')
     }
   } catch (err: any) {
-    app.log.error(`Migration failed: ${err.message}`)
-    throw err
+    app.log.warn(`Migration check failed (non-fatal): ${err.message}`)
+    app.log.warn('The server will start without the schema. Visit /setup to initialize.')
   }
 
   // Redis is optional - start gracefully

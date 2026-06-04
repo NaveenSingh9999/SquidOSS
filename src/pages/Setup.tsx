@@ -204,6 +204,9 @@ export default function Setup() {
     setLoading(true)
     setAnimate(true)
     try {
+      // Initialize DB schema if needed (first boot)
+      await fetch(`${API_URL}/api/v1/init`, { method: 'POST' }).catch(() => {})
+
       const regRes = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
