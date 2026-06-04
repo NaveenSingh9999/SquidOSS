@@ -12,7 +12,13 @@ import {
   Zap, Star, Folder,
 } from '@/lib/icon-map'
 
-const API_URL = import.meta.env.VITE_SQUIDOSS_API_URL || 'http://localhost:3000'
+const API_URL = (() => {
+  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
+  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev')) {
+    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
+  }
+  return 'http://localhost:3000'
+})()
 
 interface DriveInfo {
   device: string
@@ -95,9 +101,7 @@ const PROVIDER_FIELDS: Record<string, Array<{ key: string; label: string; type: 
   ],
   github: [
     { key: 'token', label: 'Personal Access Token', type: 'password', placeholder: 'ghp_... or github_pat_...' },
-    { key: 'owner', label: 'Repo Owner', type: 'text', placeholder: 'your-username or org-name' },
-    { key: 'repo', label: 'Repository Name', type: 'text', placeholder: 'squidoss-storage' },
-    { key: 'branch', label: 'Branch', type: 'text', placeholder: 'main' },
+    { key: 'owner', label: 'GitHub Username', type: 'text', placeholder: 'your-username' },
   ],
 }
 
@@ -222,11 +226,19 @@ export default function Setup() {
       }
 
       if (data.storageProvider && data.storageProvider !== 'local') {
-        await fetch(`${API_URL}/api/v1/storage/providers`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${regData.token}` },
-          body: JSON.stringify({ providerType: data.storageProvider, ...data.providerConfig }),
-        }).catch(() => {})
+        if (data.storageProvider === 'github') {
+          await fetch(`${API_URL}/api/v1/storage/providers/github-init`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${regData.token}` },
+            body: JSON.stringify({ token: data.providerConfig.token, owner: data.providerConfig.owner }),
+          }).catch(() => {})
+        } else {
+          await fetch(`${API_URL}/api/v1/storage/providers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${regData.token}` },
+            body: JSON.stringify({ providerType: data.storageProvider, ...data.providerConfig }),
+          }).catch(() => {})
+        }
       }
 
       // Store setup completion server-side so it persists across cache clears
@@ -473,6 +485,14 @@ export default function Setup() {
                       onChange={e => update('providerConfig', { ...data.providerConfig, [field.key]: e.target.value })} />
                   </div>
                 ))}
+                <div className="rounded-lg p-3 border border-emerald-500/20 bg-emerald-500/5">
+                  <p className="text-sm font-medium text-emerald-400 flex items-center gap-2">
+                    <Zap className="w-4 h-4" /> Auto-creates 10 private repos
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    SquidOSS will create 10 private repositories (<span className="font-mono">squidoss-00</span> through <span className="font-mono">squidoss-09</span>) under your account and distribute files across them.
+                  </p>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Requires a <a className="text-primary hover:underline" target="_blank" href="https://github.com/settings/tokens">GitHub Personal Access Token</a> with <code className="font-mono">repo</code> scope.
                 </p>
