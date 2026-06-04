@@ -1,8 +1,6 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
-import { readFileSync } from 'fs'
-import { join } from 'path'
 import { config } from './config.js'
 import { testConnection, sql } from './db/index.js'
 import { connectRedis } from './services/redis.js'
@@ -71,38 +69,53 @@ export async function buildApp() {
   // System (drives, etc.)
   await app.register(systemRoutes)
 
-  // Init endpoint: runs migrations if schema doesn't exist
+  // Init endpoint: creates minimal schema needed for setup
   app.post('/api/v1/init', async (request, reply) => {
     try {
       const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS "exists"`
       if (hasAuth?.exists) {
         return { schema: 'already_exists' }
       }
-      // Use psql to run the migration file (avoids postgres.js escaping issues with large DDL)
-      const { execSync } = await import('child_process')
-      const paths = [
-        join(process.cwd(), 'backend', 'migrations', '001_schema.sql'),
-        join(process.cwd(), 'migrations', '001_schema.sql'),
-      ]
-      let migrationPath = ''
-      for (const p of paths) {
-        try { readFileSync(p); migrationPath = p; break } catch {}
-      }
-      if (!migrationPath) {
-        reply.status(500)
-        return { error: 'Migration file not found' }
-      }
-      // Try multiple psql methods (same approach as crd.js)
-      const pgMethods = [
-        () => execSync(`sudo -u postgres psql -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000 }),
-        () => execSync(`psql -h localhost -U postgres -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
-        () => execSync(`psql "${config.database.url}" -f "${migrationPath}"`, { stdio: 'pipe', timeout: 60000 }),
-      ]
-      let migrated = false
-      for (const method of pgMethods) {
-        try { method(); migrated = true; break } catch {}
-      }
-      if (!migrated) throw new Error('Could not run migration via psql (try: sudo apt install postgresql-client)')
+
+      await sql.unsafe(`
+        CREATE SCHEMA IF NOT EXISTS auth;
+        CREATE SCHEMA IF NOT EXISTS public;
+        CREATE SCHEMA IF NOT EXISTS extensions;
+
+        CREATE TABLE IF NOT EXISTS auth.users (
+            id uuid NOT NULL DEFAULT gen_random_uuid(),
+            email text NOT NULL,
+            encrypted_password text NOT NULL,
+            role text DEFAULT 'user',
+            created_at timestamp with time zone DEFAULT now(),
+            updated_at timestamp with time zone DEFAULT now(),
+            PRIMARY KEY (id),
+            CONSTRAINT users_email_key UNIQUE (email)
+        );
+
+        CREATE TABLE IF NOT EXISTS public.profiles (
+            id uuid PRIMARY KEY REFERENCES auth.users(id),
+            full_name text,
+            avatar_url text,
+            storage_used bigint DEFAULT 0,
+            is_admin boolean DEFAULT false,
+            is_premium boolean DEFAULT false,
+            pin_enabled boolean DEFAULT false,
+            created_at timestamp with time zone DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS public.app_settings (
+            key text NOT NULL,
+            value text NOT NULL,
+            user_id uuid REFERENCES auth.users(id),
+            created_at timestamp with time zone DEFAULT now(),
+            updated_at timestamp with time zone DEFAULT now(),
+            PRIMARY KEY (key, COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid))
+        );
+
+        CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+      `)
+
       return { schema: 'created' }
     } catch (err: any) {
       reply.status(500)
@@ -306,46 +319,7 @@ export async function startServer() {
   }
   app.log.info('Database connected')
 
-  // Auto-run migrations if schema doesn't exist
-  try {
-    const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS "exists"`
-    if (!hasAuth?.exists) {
-      app.log.info('Schema tables not found — running migrations...')
-      // Try multiple paths for the migration file
-      const paths = [
-        join(process.cwd(), 'backend', 'migrations', '001_schema.sql'),
-        join(process.cwd(), 'migrations', '001_schema.sql'),
-      ]
-      let migrationPath = ''
-      for (const p of paths) {
-        try { readFileSync(p); migrationPath = p; break } catch {}
-      }
-      if (!migrationPath) {
-        app.log.error('Migration file not found in any expected path')
-      } else {
-        app.log.info(`Running migration: ${migrationPath}`)
-        const { execSync } = await import('child_process')
-        const pgMethods = [
-          () => execSync(`sudo -u postgres psql -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000 }),
-          () => execSync(`psql -h localhost -U postgres -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
-          () => execSync(`psql "${config.database.url}" -f "${migrationPath}"`, { stdio: 'pipe', timeout: 60000 }),
-        ]
-        let migrated = false
-        for (const method of pgMethods) {
-          try { method(); migrated = true; break } catch {}
-        }
-        if (migrated) {
-          app.log.info('Migrations applied successfully')
-        } else {
-          app.log.warn('Could not run auto-migration. Setup wizard will handle it.')
-        }
-      }
-    } else {
-      app.log.info('Schema already up to date')
-    }
-  } catch (err: any) {
-    app.log.warn(`Migration check failed (non-fatal): ${err.message}`)
-  }
+  // Redis is optional - start gracefully
 
   // Redis is optional - start gracefully
   const redisOk = await connectRedis()

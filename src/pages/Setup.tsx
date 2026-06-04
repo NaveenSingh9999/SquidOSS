@@ -205,7 +205,9 @@ export default function Setup() {
     setAnimate(true)
     try {
       // Initialize DB schema if needed (first boot)
-      await fetch(`${API_URL}/api/v1/init`, { method: 'POST' }).catch(() => {})
+      const initRes = await fetch(`${API_URL}/api/v1/init`, { method: 'POST' })
+      const initData = await initRes.json()
+      if (initData.error) throw new Error(`Init failed: ${initData.error}`)
 
       const regRes = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
