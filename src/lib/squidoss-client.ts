@@ -1,4 +1,12 @@
-const API_URL = import.meta.env.VITE_SQUIDOSS_API_URL || 'http://localhost:3000'
+const API_URL = (() => {
+  // Allow env var override
+  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
+  // Auto-detect on Codespaces: replace frontend port (8080) with backend port (3000)
+  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev')) {
+    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
+  }
+  return 'http://localhost:3000'
+})()
 
 type AuthChangeCallback = (event: string, session: any) => void
 

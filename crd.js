@@ -80,6 +80,11 @@ async function configure() {
   config = config.replace(/REDIS_URL=.*/, 'REDIS_URL=redis://localhost:6379')
   config = config.replace(/JWT_SECRET=.*/, `JWT_SECRET=${(await import('node:crypto')).randomBytes(32).toString('hex')}`)
   config = config.replace(/CORS_ORIGIN=.*/, `CORS_ORIGIN=${corsOrigin}`)
+  // Also set frontend API URL for Codespaces
+  if (corsOrigin.includes('app.github.dev')) {
+    const backendUrl = corsOrigin.replace('-8080.', '-3000.')
+    config += `\nVITE_SQUIDOSS_API_URL=${backendUrl}`
+  }
   writeFileSync(ENV_FILE, config)
   log('.env created')
 }
