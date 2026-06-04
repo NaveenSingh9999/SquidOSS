@@ -16,7 +16,7 @@ import {
   Home, ChevronRight, ArrowLeft, Download, LogOut,
   Settings, HardDrive, RefreshCw, Plus, Image, Video, Music,
   FileText, Archive, Lock, PanelLeft, PanelLeftClose, Github,
-  Database, Globe, Box, User, ChevronsUpDown, Server,
+  Database, Globe, Box, User, ChevronsUpDown, Server, X,
 } from '@/lib/icon-map'
 const API_URL = (() => {
   if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
@@ -86,8 +86,11 @@ export default function Dashboard() {
 
   const [providers, setProviders] = useState<StorageProvider[]>([])
   const [activeProvider, setActiveProvider] = useState<StorageProvider | null>(null)
-  const [showNewFolderInput, setShowNewFolderInput] = useState(false)
+  const [showUploadDialog, setShowUploadDialog] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
+  const [newFileName, setNewFileName] = useState('')
+  const [newFileContent, setNewFileContent] = useState('')
+  const [dialogMode, setDialogMode] = useState<'picker' | 'folder' | 'file'>('picker')
 
   const token = () => localStorage.getItem('squidoss_token')
   const headers = () => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) })
@@ -248,7 +251,6 @@ export default function Dashboard() {
       if (res.ok) {
         toast({ title: 'Folder created', description: newFolderName.trim() })
         setNewFolderName('')
-        setShowNewFolderInput(false)
         fetchFiles()
       } else {
         const err = await res.json()
@@ -464,45 +466,19 @@ export default function Dashboard() {
                   <RefreshCw className="w-4 h-4" />
                 </button>
 
-                {/* Upload dropdown */}
+                {/* Upload button → floating dialog */}
                 {activeTab === 'files' && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="default" size="sm" className="gap-1.5 h-8 text-xs">
-                        <Plus className="w-3.5 h-3.5" /> New
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44 border border-border/30 bg-card p-1">
-                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={() => setShowNewFolderInput(true)}>
-                        <Folder className="w-4 h-4" /> New Folder
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={handleUpload}>
-                        <Upload className="w-4 h-4" /> Upload Files
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button variant="default" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => { setDialogMode('picker'); setShowUploadDialog(true) }}>
+                    <Upload className="w-3.5 h-3.5" /> Upload
+                  </Button>
                 )}
               </div>
             </div>
           </header>
 
-          {/* Breadcrumbs + new folder input */}
+          {/* Breadcrumbs */}
           <div className="flex items-center gap-2 px-4 lg:px-6 py-1.5 border-b border-border/20">
             {breadcrumbs()}
-            {showNewFolderInput && (
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Folder name..."
-                  value={newFolderName}
-                  onChange={e => setNewFolderName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolderInput(false); setNewFolderName('') } }}
-                  className="h-7 text-xs w-48 rounded-lg"
-                  autoFocus
-                />
-                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleCreateFolder}>Create</Button>
-                <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => { setShowNewFolderInput(false); setNewFolderName('') }}>Cancel</Button>
-              </div>
-            )}
             <div className="flex-1" />
             {activeTab === 'files' && folders.length + filteredFiles.length > 0 && (
               <span className="text-[10px] text-muted-foreground">{folders.length} folders / {filteredFiles.length} files</span>
@@ -539,13 +515,9 @@ export default function Dashboard() {
                 <Folder className="w-10 h-10" />
                 <p className="text-sm">{searchQuery ? 'No files match your search' : 'No files yet'}</p>
                 {!searchQuery && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="gap-2 text-xs"><Plus className="w-3.5 h-3.5" /> New</Button></DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-44 border border-border/30 bg-card p-1">
-                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={() => setShowNewFolderInput(true)}><Folder className="w-4 h-4" /> New Folder</DropdownMenuItem>
-                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={handleUpload}><Upload className="w-4 h-4" /> Upload Files</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => { setDialogMode('picker'); setShowUploadDialog(true) }}>
+                    <Upload className="w-3.5 h-3.5" /> Upload
+                  </Button>
                 )}
               </div>
             ) : (
@@ -624,6 +596,83 @@ export default function Dashboard() {
             currentIndex={previewList.findIndex(f => f.id === previewFile.id)}
             totalFiles={previewList.length}
           />
+        )}
+
+        {/* Floating upload dialog */}
+        {showUploadDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowUploadDialog(false)}>
+            <div className="bg-card border border-border/40 rounded-xl shadow-2xl w-[360px] max-w-[90vw] overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border/20">
+                <h3 className="text-sm font-semibold">
+                  {dialogMode === 'picker' ? 'Create New' : dialogMode === 'folder' ? 'New Folder' : 'New File'}
+                </h3>
+                <button onClick={() => { setShowUploadDialog(false); setNewFolderName(''); setNewFileName(''); setNewFileContent('') }}
+                  className="p-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent/50">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Picker mode: 3 options */}
+              {dialogMode === 'picker' && (
+                <div className="p-4 space-y-2">
+                  <button onClick={() => { handleUpload(); setShowUploadDialog(false) }}
+                    className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-accent/40 border border-border/30 hover:border-border/60 transition-all text-left">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center"><Upload className="w-4 h-4 text-primary" /></div>
+                    <div><p className="text-sm font-medium">Upload Files</p><p className="text-[10px] text-muted-foreground">From your device</p></div>
+                  </button>
+                  <button onClick={() => setDialogMode('folder')}
+                    className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-accent/40 border border-border/30 hover:border-border/60 transition-all text-left">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Folder className="w-4 h-4 text-emerald-400" /></div>
+                    <div><p className="text-sm font-medium">New Folder</p><p className="text-[10px] text-muted-foreground">Organize your files</p></div>
+                  </button>
+                  <button onClick={() => setDialogMode('file')}
+                    className="flex items-center gap-3 w-full p-3 rounded-lg hover:bg-accent/40 border border-border/30 hover:border-border/60 transition-all text-left">
+                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center"><FileText className="w-4 h-4 text-amber-400" /></div>
+                    <div><p className="text-sm font-medium">New File</p><p className="text-[10px] text-muted-foreground">Create a text file</p></div>
+                  </button>
+                </div>
+              )}
+
+              {/* Folder mode */}
+              {dialogMode === 'folder' && (
+                <div className="p-4 space-y-3">
+                  <Input placeholder="Folder name..." value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder().then(() => setShowUploadDialog(false)) }}
+                    className="h-9 text-sm rounded-lg" autoFocus />
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setDialogMode('picker'); setNewFolderName('') }}>Back</Button>
+                    <Button size="sm" className="text-xs" onClick={async () => { await handleCreateFolder(); setShowUploadDialog(false) }}>Create</Button>
+                  </div>
+                </div>
+              )}
+
+              {/* File mode */}
+              {dialogMode === 'file' && (
+                <div className="p-4 space-y-3">
+                  <Input placeholder="File name (e.g. notes.txt)" value={newFileName} onChange={e => setNewFileName(e.target.value)} className="h-9 text-sm rounded-lg" autoFocus />
+                  <textarea placeholder="File content..." value={newFileContent} onChange={e => setNewFileContent(e.target.value)}
+                    className="w-full h-24 px-3 py-2 text-xs rounded-lg bg-background border border-border/40 focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none" />
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setDialogMode('picker'); setNewFileName(''); setNewFileContent('') }}>Back</Button>
+                    <Button size="sm" className="text-xs" onClick={async () => {
+                      if (!newFileName.trim()) return
+                      const blob = new Blob([newFileContent || ''], { type: 'text/plain' })
+                      const file = new File([blob], newFileName.trim(), { type: 'text/plain' })
+                      const formData = new FormData()
+                      formData.append('file', file)
+                      formData.append('parent_folder', currentFolder || '')
+                      try {
+                        const res = await fetch(`${API_URL}/files/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: formData })
+                        if (res.ok) { toast({ title: 'Created', description: newFileName.trim() }); fetchFiles(); setShowUploadDialog(false); setNewFileName(''); setNewFileContent('') }
+                        else { const err = await res.json(); toast({ title: 'Error', description: err.error || 'Failed', variant: 'destructive' }) }
+                      } catch {}
+                    }}>Create</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </ProviderCtx.Provider>

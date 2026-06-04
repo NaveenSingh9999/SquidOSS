@@ -58,22 +58,28 @@ export default async function fileRoutes(fastify: FastifyInstance) {
     const fileName = data.filename
     const fileType = data.mimetype || ''
     const fileSize = buffer.length
+    const parentFolder = (data.fields.parent_folder as any)?.value || null
+    const providerId = (data.fields.storage_provider_id as any)?.value || null
 
-    const [ws] = await sql`
-      INSERT INTO workspaces (user_id, name, is_default)
-      SELECT ${userId}, 'My Workspace', true
-      WHERE NOT EXISTS (SELECT 1 FROM workspaces WHERE user_id = ${userId})
-      RETURNING id
-    `
-    if (!ws) {
-      const [existing] = await sql`SELECT id FROM workspaces WHERE user_id = ${userId} LIMIT 1`
-      ws = existing
+    // Get or create default workspace
+    let ws = await sql`SELECT id FROM workspaces WHERE user_id = ${userId} LIMIT 1`
+    let workspaceId
+    if (ws.length === 0) {
+      const [created] = await sql`
+        INSERT INTO workspaces (user_id, name, is_default)
+        VALUES (${userId}, 'My Workspace', true)
+        RETURNING id
+      `
+      workspaceId = created.id
+    } else {
+      workspaceId = ws[0].id
     }
-    const workspaceId = ws.id
+
+    const storagePath = `local/${userId}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
     const [file] = await sql`
-      INSERT INTO files (user_id, name, type, size, storage_path, workspace_id)
-      VALUES (${userId}, ${fileName}, ${fileType}, ${fileSize}, ${`local/${userId}/${fileName}`}, ${workspaceId})
+      INSERT INTO files (user_id, name, type, size, storage_path, workspace_id, parent_folder, storage_provider_id)
+      VALUES (${userId}, ${fileName}, ${fileType}, ${fileSize}, ${storagePath}, ${workspaceId}, ${parentFolder}, ${providerId})
       RETURNING *
     `
     return reply.status(201).send({ file })
