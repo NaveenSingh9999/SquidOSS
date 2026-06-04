@@ -22,6 +22,7 @@ import storageRoutes from './routes/storage.js'
 import passkeyRoutes from './routes/passkey.js'
 import healthRoutes from './routes/health.js'
 import systemRoutes from './routes/system.js'
+import res54Routes from './routes/res54.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -68,6 +69,7 @@ export async function buildApp() {
 
   // System (drives, etc.)
   await app.register(systemRoutes)
+  await app.register(res54Routes)
 
   // Init endpoint: creates minimal schema needed for setup
   app.post('/api/v1/init', async (request, reply) => {
@@ -119,6 +121,40 @@ export async function buildApp() {
             "clone_url text," +
             "created_at timestamp with time zone DEFAULT now()" +
         ")",
+        "CREATE TABLE IF NOT EXISTS public.folders (" +
+            "id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY," +
+            "user_id uuid NOT NULL," +
+            "name text NOT NULL," +
+            "path text NOT NULL," +
+            "parent_folder text," +
+            "storage_provider_id uuid," +
+            "created_at timestamp with time zone DEFAULT now() NOT NULL," +
+            "updated_at timestamp with time zone DEFAULT now() NOT NULL," +
+            "is_public boolean DEFAULT false" +
+        ")",
+        "CREATE TABLE IF NOT EXISTS public.files (" +
+            "id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY," +
+            "user_id uuid NOT NULL," +
+            "name text NOT NULL," +
+            "type text," +
+            "size bigint DEFAULT 0," +
+            "storage_path text," +
+            "encrypted boolean DEFAULT false," +
+            "is_deleted boolean DEFAULT false," +
+            "parent_folder text," +
+            "storage_provider_id uuid," +
+            "workspace_id uuid," +
+            "deleted_at timestamp with time zone," +
+            "created_at timestamp with time zone DEFAULT now() NOT NULL," +
+            "updated_at timestamp with time zone DEFAULT now() NOT NULL" +
+        ")",
+        "CREATE TABLE IF NOT EXISTS public.workspaces (" +
+            "id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY," +
+            "user_id uuid NOT NULL," +
+            "name text NOT NULL," +
+            "is_default boolean DEFAULT false," +
+            "created_at timestamp with time zone DEFAULT now()" +
+        ")",
         'CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions',
       ]
 
@@ -145,7 +181,7 @@ export async function buildApp() {
     endpoints: [
       '/auth', '/files', '/keys', '/trash', '/shares',
       '/video', '/admin', '/storage/providers',
-      '/query', '/rpc', '/storage',
+      '/query', '/rpc', '/storage', '/res54',
     ],
   }))
 

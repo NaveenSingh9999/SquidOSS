@@ -36,6 +36,7 @@ const Profile = lazy(() => import("./pages/Profile"));
 const Settings = lazy(() => import("./pages/Settings"));
 const AccountSettings = lazy(() => import("./pages/AccountSettings"));
 const DeveloperAPI = lazy(() => import("./pages/DeveloperAPI"));
+const ProviderSettings = lazy(() => import("./pages/ProviderSettings"));
 import { ErrorBoundary } from "./components/ErrorBoundary";
 const CbCode = lazy(() => import("./pages/cbCode"));
 const PDFViewerPage = lazy(() => import("./pages/PDFViewerPage"));
@@ -234,6 +235,15 @@ const AppContent = () => {
             <RouteSuspense>
               <ProtectedRoute>
                 <AccountSettings />
+              </ProtectedRoute>
+            </RouteSuspense>
+            </AnimatedRoute>
+          } />
+          <Route path="/settings/providers" element={
+            <AnimatedRoute>
+            <RouteSuspense>
+              <ProtectedRoute>
+                <ProviderSettings />
               </ProtectedRoute>
             </RouteSuspense>
             </AnimatedRoute>

@@ -5,7 +5,7 @@ import { AppError } from '../utils/errors.js'
 
 const ALLOWED_TABLES = new Set([
   'files', 'folders', 'profiles', 'api_keys', 'shares',
-  'workspaces', 'workspace_members', 'storage_providers',
+  'workspaces', 'workspace_members', 'storage_providers', 'github_repos',
   'repositories', 'media_metadata', 'security_events',
   'audit_logs', 'admin_access_logs', 'api_request_logs',
   'trash_items', 'file_requests', 'shared_file_access',

@@ -33,6 +33,21 @@ export default async function fileRoutes(fastify: FastifyInstance) {
     return { file }
   })
 
+  // POST /api/v1/folders - create a new folder
+  fastify.post('/api/v1/folders', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { sub: userId } = request.user as any
+    const { name, parent_folder } = request.body as { name: string; parent_folder?: string }
+    if (!name) return reply.status(400).send({ error: 'Folder name required' })
+
+    const path = parent_folder ? `${parent_folder}/${name}` : name
+    const [folder] = await sql`
+      INSERT INTO folders (user_id, name, path, parent_folder)
+      VALUES (${userId}, ${name}, ${path}, ${parent_folder || null})
+      RETURNING *
+    `
+    return reply.status(201).send({ folder })
+  })
+
   // Upload file
   fastify.post('/files/upload', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const { sub: userId } = request.user as any

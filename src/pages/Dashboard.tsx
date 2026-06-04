@@ -1,21 +1,23 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
-import { isFeatureEnabled } from '@/hooks/useFeatureFlags'
 import { cn, formatFileSize } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import EnhancedInstantPreviewModal from '@/components/EnhancedInstantPreviewModal'
 import {
   Search, Grid3X3, List, Upload, Folder, File, Trash2,
-  Home, ChevronRight, ArrowLeft, Download, Share2, LogOut,
+  Home, ChevronRight, ArrowLeft, Download, LogOut,
   Settings, HardDrive, RefreshCw, Plus, Image, Video, Music,
-  FileText, Archive, Lock,
+  FileText, Archive, Lock, PanelLeft, PanelLeftClose, Github,
+  Database, Globe, Box, User, ChevronsUpDown, Server,
 } from '@/lib/icon-map'
-
 const API_URL = (() => {
   if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
   if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev')) {
@@ -35,6 +37,27 @@ interface FolderItem {
   parent_folder?: string | null; user_id?: string
 }
 
+interface StorageProvider {
+  id: string; provider_type: string; is_default: boolean; created_at: string
+}
+
+interface ProviderContextValue {
+  activeProvider: StorageProvider | null
+  providers: StorageProvider[]
+  setActiveProvider: (p: StorageProvider) => void
+  refreshProviders: () => void
+}
+
+const ProviderCtx = createContext<ProviderContextValue>({
+  activeProvider: null, providers: [],
+  setActiveProvider: () => {}, refreshProviders: () => {},
+})
+export const useProvider = () => useContext(ProviderCtx)
+
+const PROVIDER_ICONS: Record<string, React.ComponentType<{className?: string}>> = {
+  github: Github, local: HardDrive, r2: Globe, s3: Box,
+}
+
 function getFileIcon(type?: string) {
   if (!type) return FileText
   if (type.startsWith('image/')) return Image
@@ -49,7 +72,6 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { user, signOut } = useAuth()
-  const sharingEnabled = isFeatureEnabled('sharing')
 
   const [files, setFiles] = useState<FileItem[]>([])
   const [folders, setFolders] = useState<FolderItem[]>([])
@@ -58,44 +80,73 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
+  const [activeTab, setActiveTab] = useState<'files' | 'trash'>('files')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([])
+
+  const [providers, setProviders] = useState<StorageProvider[]>([])
+  const [activeProvider, setActiveProvider] = useState<StorageProvider | null>(null)
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
 
   const token = () => localStorage.getItem('squidoss_token')
   const headers = () => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) })
+
+  const refreshProviders = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/storage/providers`, { headers: headers() })
+      const data = await res.json()
+      const list: StorageProvider[] = data?.providers || []
+      setProviders(list)
+      if (!activeProvider && list.length > 0) {
+        setActiveProvider(list[0])
+      }
+    } catch {}
+  }, [activeProvider])
+
+  useEffect(() => { refreshProviders() }, [])
 
   const fetchFiles = useCallback(async () => {
     if (!user) return
     setLoading(true)
     try {
-      const fRes = await fetch(`${API_URL}/api/v1/query/files?select=*&filter=is_deleted.false${currentFolder ? `,eq.parent_folder.${currentFolder}` : ',is.parent_folder.null'}&order=created_at.desc.nullslast`, { headers: headers() })
-      const fData = await fRes.json()
-      setFiles(Array.isArray(fData) ? fData : fData?.data || [])
+      if (activeTab === 'trash') {
+        const tRes = await fetch(`${API_URL}/api/v1/trash`, { headers: headers() })
+        const tData = await tRes.json()
+        setTrashedFiles(tData?.files || [])
+      } else {
+        const fRes = await fetch(`${API_URL}/api/v1/query/files?select=*&filter=is_deleted.false${currentFolder ? `,eq.parent_folder.${currentFolder}` : ',is.parent_folder.null'}&order=created_at.desc.nullslast`, { headers: headers() })
+        const fData = await fRes.json()
+        setFiles(Array.isArray(fData) ? fData : fData?.data || [])
 
-      const folRes = await fetch(`${API_URL}/api/v1/query/folders?select=*&order=created_at.desc.nullslast`, { headers: headers() })
-      const folData = await folRes.json()
-      const allFolders: FolderItem[] = Array.isArray(folData) ? folData : folData?.data || []
-      const filtered = allFolders.filter(f => {
-        if (!currentFolder) return !f.parent_folder || f.parent_folder === ''
-        return f.parent_folder === currentFolder
-      })
-      setFolders(filtered)
+        const folRes = await fetch(`${API_URL}/api/v1/query/folders?select=*&order=created_at.desc.nullslast`, { headers: headers() })
+        const folData = await folRes.json()
+        const allFolders: FolderItem[] = Array.isArray(folData) ? folData : folData?.data || []
+        const filtered = allFolders.filter(f => {
+          if (!currentFolder) return !f.parent_folder || f.parent_folder === ''
+          return f.parent_folder === currentFolder
+        })
+        setFolders(filtered)
+      }
     } catch (e: any) {
       console.error('fetch error', e)
-      toast({ title: 'Error', description: e.message, variant: 'destructive' })
     }
     setLoading(false)
-  }, [user, currentFolder])
+  }, [user, currentFolder, activeTab])
 
   useEffect(() => { fetchFiles() }, [fetchFiles])
 
   const filteredFiles = useMemo(() => {
+    if (activeTab === 'trash') return trashedFiles
     if (!searchQuery) return files
     const q = searchQuery.toLowerCase()
     return files.filter(f => f.name.toLowerCase().includes(q))
-  }, [files, searchQuery])
+  }, [files, trashedFiles, searchQuery, activeTab])
 
   const handleNavigate = (path: string) => {
     setCurrentFolder(path)
     setSearchQuery('')
+    setActiveTab('files')
   }
 
   const handleGoBack = () => {
@@ -117,6 +168,35 @@ export default function Dashboard() {
     } else {
       const err = await res.json()
       toast({ title: 'Error', description: err.error || 'Delete failed', variant: 'destructive' })
+    }
+  }
+
+  const handlePermanentDelete = async (file: FileItem) => {
+    if (!confirm(`Permanently delete "${file.name}"? This cannot be undone.`)) return
+    const res = await fetch(`${API_URL}/api/v1/trash`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ action: 'permanent_delete', fileId: file.id }),
+    })
+    if (res.ok) {
+      setTrashedFiles(prev => prev.filter(f => f.id !== file.id))
+      toast({ title: 'Permanently deleted' })
+    } else {
+      const err = await res.json()
+      toast({ title: 'Error', description: err.error || 'Delete failed', variant: 'destructive' })
+    }
+  }
+
+  const handleRestore = async (file: FileItem) => {
+    const res = await fetch(`${API_URL}/api/v1/trash`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ action: 'restore', fileId: file.id }),
+    })
+    if (res.ok) {
+      setTrashedFiles(prev => prev.filter(f => f.id !== file.id))
+      toast({ title: 'Restored' })
+    } else {
+      const err = await res.json()
+      toast({ title: 'Error', description: err.error || 'Restore failed', variant: 'destructive' })
     }
   }
 
@@ -158,17 +238,37 @@ export default function Dashboard() {
     input.click()
   }
 
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return
+    try {
+      const res = await fetch(`${API_URL}/api/v1/folders`, {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ name: newFolderName.trim(), parent_folder: currentFolder || null }),
+      })
+      if (res.ok) {
+        toast({ title: 'Folder created', description: newFolderName.trim() })
+        setNewFolderName('')
+        setShowNewFolderInput(false)
+        fetchFiles()
+      } else {
+        const err = await res.json()
+        toast({ title: 'Error', description: err.error || 'Failed to create folder', variant: 'destructive' })
+      }
+    } catch {}
+  }
+
   const previewAdjacents = useMemo(() => {
+    const list = activeTab === 'trash' ? trashedFiles : filteredFiles
     if (!previewFile) return { previous: null, next: null }
-    const i = filteredFiles.findIndex(f => f.id === previewFile.id)
+    const i = list.findIndex(f => f.id === previewFile.id)
     return {
-      previous: i > 0 ? filteredFiles[i - 1] : null,
-      next: i < filteredFiles.length - 1 ? filteredFiles[i + 1] : null,
+      previous: i > 0 ? list[i - 1] : null,
+      next: i < list.length - 1 ? list[i + 1] : null,
     }
-  }, [previewFile, filteredFiles])
+  }, [previewFile, filteredFiles, trashedFiles, activeTab])
 
   const breadcrumbs = () => {
-    if (!currentFolder) return null
+    if (activeTab === 'trash' || !currentFolder) return null
     const parts = currentFolder.split('/').filter(Boolean)
     return (
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -190,161 +290,342 @@ export default function Dashboard() {
     )
   }
 
+  const providerIcon = (type: string) => {
+    const Icon = PROVIDER_ICONS[type] || Database
+    return <Icon className="w-4 h-4" />
+  }
+
+  const NavItem = ({ id, label, icon: Icon, badge }: { id: string; label: string; icon: any; badge?: number }) => (
+    <button onClick={() => { setActiveTab(id as any); setCurrentFolder('') }}
+      className={cn(
+        'group relative flex w-full items-center gap-2.5 px-2 h-9 rounded-lg text-sm transition-all',
+        activeTab === id
+          ? 'bg-primary/10 text-primary font-medium'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+        sidebarCollapsed && 'justify-center px-0 h-10 w-10 mx-auto',
+      )} title={sidebarCollapsed ? label : undefined}>
+      <icon className="w-4 h-4 flex-shrink-0" weight={activeTab === id ? 'fill' : 'regular'} />
+      {!sidebarCollapsed && <span className="flex-1 text-left text-[13px]">{label}</span>}
+      {!sidebarCollapsed && badge !== undefined && badge > 0 && (
+        <Badge variant="secondary" className="h-5 min-w-[20px] px-1 text-[10px]">{badge}</Badge>
+      )}
+    </button>
+  )
+
+  const previewList = activeTab === 'trash' ? trashedFiles : filteredFiles
+
   return (
-    <div className="h-screen flex flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-border/40 bg-background/80 backdrop-blur-xl">
-        <div className="flex items-center justify-between h-14 px-4 lg:px-6 max-w-[1400px] mx-auto w-full">
-          <div className="flex items-center gap-3">
-            <HardDrive className="w-5 h-5 text-primary" />
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search files..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-9 h-9 w-64 text-sm rounded-lg"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 text-muted-foreground hover:text-foreground" title="Toggle view">
-              {viewMode === 'grid' ? <List className="w-4 h-4" /> : <Grid3X3 className="w-4 h-4" />}
-            </button>
-            <Button variant="outline" size="sm" onClick={handleUpload} className="gap-2">
-              <Upload className="w-4 h-4" /> Upload
-            </Button>
-            <button onClick={() => navigate('/settings/account')} className="p-2 text-muted-foreground hover:text-foreground" title="Settings">
-              <Settings className="w-4 h-4" />
-            </button>
-            <button onClick={signOut} className="p-2 text-muted-foreground hover:text-destructive" title="Sign out">
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 lg:px-6 py-2 border-b border-border/20 max-w-[1400px] mx-auto w-full">
-        <div className="flex items-center gap-2">
-          {currentFolder && (
-            <button onClick={handleGoBack} className="p-1.5 text-muted-foreground hover:text-foreground">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-          )}
-          {breadcrumbs()}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={fetchFiles} className="p-1.5 text-muted-foreground hover:text-foreground" title="Refresh">
-            <RefreshCw className="w-4 h-4" />
-          </button>
-          {folders.length + filteredFiles.length > 0 && (
-            <span className="text-xs text-muted-foreground">{folders.length} folders / {filteredFiles.length} files</span>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 max-w-[1400px] mx-auto w-full">
-        {loading ? (
-          <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
-        ) : folders.length === 0 && filteredFiles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-3">
-            <Folder className="w-12 h-12" />
-            <p>{searchQuery ? 'No files match your search' : 'No files yet'}</p>
-            {!searchQuery && <Button variant="outline" size="sm" onClick={handleUpload} className="gap-2"><Upload className="w-4 h-4" /> Upload your first file</Button>}
-          </div>
-        ) : (
-          <div className={viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3' : 'space-y-1'}>
-            {/* Folder cards */}
-            {folders.map(folder => (
-              <button key={folder.id}
-                onClick={() => handleNavigate(folder.path)}
-                className={cn(
-                  'group text-left transition-colors hover:bg-accent/50 rounded-xl',
-                  viewMode === 'grid' ? 'p-4 border border-border/50 hover:border-border' : 'flex items-center gap-3 px-3 py-2 rounded-lg'
-                )}>
-                <div className={cn('flex items-center gap-3', viewMode === 'grid' ? 'flex-col text-center' : 'flex-1 min-w-0')}>
-                  <div className={cn('rounded-xl bg-primary/10 flex items-center justify-center shrink-0', viewMode === 'grid' ? 'w-12 h-12' : 'w-8 h-8')}>
-                    <Folder className={cn('text-primary', viewMode === 'grid' ? 'w-6 h-6' : 'w-4 h-4')} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className={cn('font-medium truncate', viewMode === 'grid' ? 'text-sm' : 'text-[13px]')}>{folder.name}</p>
-                  </div>
+    <ProviderCtx.Provider value={{ activeProvider, providers, setActiveProvider, refreshProviders }}>
+      <div className="h-screen flex bg-background">
+        {/* Sidebar */}
+        <aside className={cn(
+          'flex-shrink-0 h-full border-r border-border/30 bg-card flex flex-col transition-all duration-200 z-30',
+          sidebarCollapsed ? 'w-[56px]' : 'w-[200px]',
+        )}>
+          {/* Logo + collapse */}
+          <div className={cn('flex items-center h-12 border-b border-border/30 flex-shrink-0', sidebarCollapsed ? 'justify-center' : 'justify-between px-3')}>
+            {!sidebarCollapsed && (
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
+                  <Server className="w-3.5 h-3.5 text-primary-foreground" />
                 </div>
-              </button>
-            ))}
+                <span className="text-sm font-semibold">SquidOSS</span>
+              </div>
+            )}
+            <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent/50 transition-colors"
+              title={sidebarCollapsed ? 'Expand' : 'Collapse'}>
+              {sidebarCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+          </div>
 
-            {/* File cards */}
-            {filteredFiles.map(file => {
-              const Icon = getFileIcon(file.type)
-              return (
-                <button key={file.id}
-                  onClick={() => setPreviewFile(file)}
+          {/* Nav items */}
+          <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+            <NavItem id="files" label="Files" icon={Folder} />
+            <NavItem id="trash" label="Trash" icon={Trash2} badge={trashedFiles.length} />
+
+            {!sidebarCollapsed && <div className="h-2" />}
+
+            {/* Storage Providers section */}
+            {!sidebarCollapsed && (
+              <div className="px-2 pt-3 pb-1">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/50">Storage</p>
+              </div>
+            )}
+            {providers.length === 0 ? (
+              <button onClick={() => navigate('/settings/providers')}
+                className={cn(
+                  'flex items-center gap-2.5 px-2 h-8 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 w-full transition-all',
+                  sidebarCollapsed && 'justify-center px-0 h-9 w-9 mx-auto',
+                )} title="Add provider">
+                <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+                {!sidebarCollapsed && <span>Add Provider</span>}
+              </button>
+            ) : (
+              providers.map(p => (
+                <button key={p.id} onClick={() => setActiveProvider(p)}
                   className={cn(
-                    'group text-left transition-colors hover:bg-accent/50 rounded-xl relative',
-                    viewMode === 'grid' ? 'p-4 border border-border/50 hover:border-border' : 'flex items-center gap-3 px-3 py-2 rounded-lg'
-                  )}>
-                  <div className={cn('flex items-center gap-3', viewMode === 'grid' ? 'flex-col text-center' : 'flex-1 min-w-0')}>
-                    <div className={cn('rounded-xl bg-primary/5 flex items-center justify-center shrink-0', viewMode === 'grid' ? 'w-12 h-12' : 'w-8 h-8')}>
-                      <Icon className={cn('text-primary/70', viewMode === 'grid' ? 'w-6 h-6' : 'w-4 h-4')} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className={cn('font-medium truncate', viewMode === 'grid' ? 'text-sm' : 'text-[13px]')}>{file.name}</p>
-                      {viewMode === 'list' && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{formatFileSize(file.size || 0)}</span>
-                          {file.encrypted && <Lock className="w-3 h-3" />}
-                        </div>
-                      )}
-                    </div>
-                    {viewMode === 'grid' && (
-                      <p className="text-[11px] text-muted-foreground">{formatFileSize(file.size || 0)}</p>
-                    )}
-                  </div>
-                  {/* Actions (visible on hover) */}
-                  {viewMode === 'list' && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      <span onClick={e => { e.stopPropagation(); handleDownload(file) }} className="p-1.5 text-muted-foreground hover:text-foreground" title="Download">
-                        <Download className="w-3.5 h-3.5" />
-                      </span>
-                      <span onClick={e => { e.stopPropagation(); handleDelete(file) }} className="p-1.5 text-muted-foreground hover:text-destructive" title="Delete">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </span>
-                    </div>
+                    'flex items-center gap-2.5 px-2 h-8 rounded-lg text-xs w-full transition-all',
+                    activeProvider?.id === p.id
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                    sidebarCollapsed && 'justify-center px-0 h-9 w-9 mx-auto',
+                  )} title={sidebarCollapsed ? p.provider_type : undefined}>
+                  {providerIcon(p.provider_type)}
+                  {!sidebarCollapsed && (
+                    <span className="truncate flex-1 text-left capitalize">{p.provider_type}</span>
                   )}
-                  {viewMode === 'grid' && (
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span onClick={e => { e.stopPropagation(); handleDownload(file) }} className="p-1 bg-background/80 rounded text-muted-foreground hover:text-foreground">
-                        <Download className="w-3 h-3" />
-                      </span>
-                      <span onClick={e => { e.stopPropagation(); handleDelete(file) }} className="p-1 bg-background/80 rounded text-muted-foreground hover:text-destructive">
-                        <Trash2 className="w-3 h-3" />
-                      </span>
+                </button>
+              ))
+            )}
+          </nav>
+
+          {/* Bottom area */}
+          <div className="border-t border-border/30 p-2 space-y-1">
+            <button onClick={() => navigate('/settings/account')}
+              className={cn(
+                'flex items-center gap-2.5 px-2 h-8 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 w-full transition-all',
+                sidebarCollapsed && 'justify-center px-0 h-9 w-9 mx-auto',
+              )} title="Settings">
+              <Settings className="w-4 h-4 flex-shrink-0" />
+              {!sidebarCollapsed && <span>Settings</span>}
+            </button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={cn(
+                  'flex items-center gap-2.5 w-full rounded-lg transition-all hover:bg-accent/50',
+                  sidebarCollapsed ? 'justify-center h-9 w-9 mx-auto' : 'px-2 h-10',
+                )}>
+                  <div className="w-7 h-7 rounded-md bg-accent border border-border/40 flex items-center justify-center text-[10px] font-semibold text-foreground flex-shrink-0">
+                    {user?.email?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-[11px] font-medium truncate">{user?.email?.split('@')[0]}</p>
+                      <p className="text-[9px] text-muted-foreground truncate">{user?.email}</p>
                     </div>
                   )}
                 </button>
-              )
-            })}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align={sidebarCollapsed ? 'center' : 'end'} side="top" sideOffset={8} className="w-52 border border-border/40 bg-card/95 p-1.5">
+                <div className="px-2 py-1.5 border-b border-border/30 mb-1">
+                  <p className="text-[13px] font-medium truncate">{user?.email?.split('@')[0]}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+                </div>
+                <DropdownMenuItem className="gap-2 py-1.5 text-xs cursor-pointer" onClick={() => navigate('/settings/account')}>
+                  <User className="w-4 h-4" /> Account
+                </DropdownMenuItem>
+                <DropdownMenuItem className="gap-2 py-1.5 text-xs cursor-pointer" onClick={() => navigate('/settings/providers')}>
+                  <Database className="w-4 h-4" /> Providers
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border/30 my-1" />
+                <DropdownMenuItem className="gap-2 py-1.5 text-xs text-destructive cursor-pointer" onClick={signOut}>
+                  <LogOut className="w-4 h-4" /> Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
-      </main>
+        </aside>
 
-      {/* Full-screen preview modal */}
-      {previewFile && (
-        <EnhancedInstantPreviewModal
-          file={previewFile}
-          isOpen={!!previewFile}
-          onClose={() => setPreviewFile(null)}
-          onDownload={() => handleDownload(previewFile)}
-          onNext={() => { if (previewAdjacents.next) setPreviewFile(previewAdjacents.next) }}
-          onPrevious={() => { if (previewAdjacents.previous) setPreviewFile(previewAdjacents.previous) }}
-          hasNext={!!previewAdjacents.next}
-          hasPrevious={!!previewAdjacents.previous}
-          currentIndex={filteredFiles.findIndex(f => f.id === previewFile.id)}
-          totalFiles={filteredFiles.length}
-        />
-      )}
-    </div>
+        {/* Main content */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Top bar */}
+          <header className="sticky top-0 z-20 border-b border-border/30 bg-background/80 backdrop-blur-xl">
+            <div className="flex items-center justify-between h-12 px-4 lg:px-6">
+              <div className="flex items-center gap-3 flex-1">
+                {currentFolder && activeTab === 'files' ? (
+                  <button onClick={handleGoBack} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent/50">
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                ) : null}
+                <div className="relative max-w-xs w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder={activeTab === 'trash' ? 'Search trash...' : 'Search files...'}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-9 h-8 text-xs rounded-lg"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {activeProvider && (
+                  <Badge variant="outline" className="gap-1.5 text-[10px] h-6 px-2 capitalize border-border/50">
+                    {providerIcon(activeProvider.provider_type)}
+                    {activeProvider.provider_type}
+                  </Badge>
+                )}
+                <button onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                  className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent/50" title="Toggle view">
+                  {viewMode === 'grid' ? <List className="w-4 h-4" /> : <Grid3X3 className="w-4 h-4" />}
+                </button>
+                <button onClick={fetchFiles} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent/50" title="Refresh">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+
+                {/* Upload dropdown */}
+                {activeTab === 'files' && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="default" size="sm" className="gap-1.5 h-8 text-xs">
+                        <Plus className="w-3.5 h-3.5" /> New
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44 border border-border/30 bg-card p-1">
+                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={() => setShowNewFolderInput(true)}>
+                        <Folder className="w-4 h-4" /> New Folder
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={handleUpload}>
+                        <Upload className="w-4 h-4" /> Upload Files
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {/* Breadcrumbs + new folder input */}
+          <div className="flex items-center gap-2 px-4 lg:px-6 py-1.5 border-b border-border/20">
+            {breadcrumbs()}
+            {showNewFolderInput && (
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Folder name..."
+                  value={newFolderName}
+                  onChange={e => setNewFolderName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolderInput(false); setNewFolderName('') } }}
+                  className="h-7 text-xs w-48 rounded-lg"
+                  autoFocus
+                />
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleCreateFolder}>Create</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => { setShowNewFolderInput(false); setNewFolderName('') }}>Cancel</Button>
+              </div>
+            )}
+            <div className="flex-1" />
+            {activeTab === 'files' && folders.length + filteredFiles.length > 0 && (
+              <span className="text-[10px] text-muted-foreground">{folders.length} folders / {filteredFiles.length} files</span>
+            )}
+          </div>
+
+          {/* Content */}
+          <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-4">
+            {loading ? (
+              <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+            ) : activeTab === 'trash' ? (
+              trashedFiles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-3">
+                  <Trash2 className="w-10 h-10" />
+                  <p className="text-sm">Trash is empty</p>
+                </div>
+              ) : (
+                <div className="max-w-4xl mx-auto space-y-1">
+                  {trashedFiles.map(file => (
+                    <div key={file.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent/30 transition-colors group">
+                      <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="flex-1 text-sm truncate min-w-0">{file.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{formatFileSize(file.size || 0)}</span>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleRestore(file)} className="px-2 py-1 text-[10px] text-emerald-400 hover:bg-emerald-400/10 rounded">Restore</button>
+                        <button onClick={() => handlePermanentDelete(file)} className="px-2 py-1 text-[10px] text-destructive hover:bg-destructive/10 rounded">Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : folders.length === 0 && filteredFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-3">
+                <Folder className="w-10 h-10" />
+                <p className="text-sm">{searchQuery ? 'No files match your search' : 'No files yet'}</p>
+                {!searchQuery && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="gap-2 text-xs"><Plus className="w-3.5 h-3.5" /> New</Button></DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-44 border border-border/30 bg-card p-1">
+                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={() => setShowNewFolderInput(true)}><Folder className="w-4 h-4" /> New Folder</DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2.5 py-2 text-xs cursor-pointer" onClick={handleUpload}><Upload className="w-4 h-4" /> Upload Files</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            ) : (
+              <div className={viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3' : 'space-y-1 max-w-4xl mx-auto'}>
+                {folders.map(folder => (
+                  <button key={folder.id}
+                    onClick={() => handleNavigate(folder.path)}
+                    className={cn(
+                      'group text-left transition-colors hover:bg-accent/40 rounded-xl',
+                      viewMode === 'grid' ? 'p-4 border border-border/40 hover:border-border' : 'flex items-center gap-3 px-3 py-2 rounded-lg'
+                    )}>
+                    <div className={cn('flex items-center gap-3', viewMode === 'grid' ? 'flex-col text-center' : 'flex-1 min-w-0')}>
+                      <div className={cn('rounded-lg bg-primary/10 flex items-center justify-center shrink-0', viewMode === 'grid' ? 'w-10 h-10' : 'w-7 h-7')}>
+                        <Folder className={cn('text-primary', viewMode === 'grid' ? 'w-5 h-5' : 'w-3.5 h-3.5')} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className={cn('font-medium truncate', viewMode === 'grid' ? 'text-xs' : 'text-[12px]')}>{folder.name}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+                {filteredFiles.map(file => {
+                  const Icon = getFileIcon(file.type)
+                  return (
+                    <button key={file.id}
+                      onClick={() => setPreviewFile(file)}
+                      className={cn(
+                        'group text-left transition-colors hover:bg-accent/40 rounded-xl relative',
+                        viewMode === 'grid' ? 'p-4 border border-border/40 hover:border-border' : 'flex items-center gap-3 px-3 py-2 rounded-lg'
+                      )}>
+                      <div className={cn('flex items-center gap-3', viewMode === 'grid' ? 'flex-col text-center' : 'flex-1 min-w-0')}>
+                        <div className={cn('rounded-lg bg-primary/5 flex items-center justify-center shrink-0', viewMode === 'grid' ? 'w-10 h-10' : 'w-7 h-7')}>
+                          <Icon className={cn('text-primary/60', viewMode === 'grid' ? 'w-5 h-5' : 'w-3.5 h-3.5')} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className={cn('font-medium truncate', viewMode === 'grid' ? 'text-xs' : 'text-[12px]')}>{file.name}</p>
+                          {viewMode === 'list' && (
+                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                              <span>{formatFileSize(file.size || 0)}</span>
+                              {file.encrypted && <Lock className="w-2.5 h-2.5" />}
+                            </div>
+                          )}
+                        </div>
+                        {viewMode === 'grid' && <p className="text-[10px] text-muted-foreground">{formatFileSize(file.size || 0)}</p>}
+                      </div>
+                      {viewMode === 'list' && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <span onClick={e => { e.stopPropagation(); handleDownload(file) }} className="p-1 text-muted-foreground hover:text-foreground rounded" title="Download"><Download className="w-3 h-3" /></span>
+                          <span onClick={e => { e.stopPropagation(); handleDelete(file) }} className="p-1 text-muted-foreground hover:text-destructive rounded" title="Delete"><Trash2 className="w-3 h-3" /></span>
+                        </div>
+                      )}
+                      {viewMode === 'grid' && (
+                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span onClick={e => { e.stopPropagation(); handleDownload(file) }} className="p-1 bg-background/80 rounded text-muted-foreground hover:text-foreground"><Download className="w-3 h-3" /></span>
+                          <span onClick={e => { e.stopPropagation(); handleDelete(file) }} className="p-1 bg-background/80 rounded text-muted-foreground hover:text-destructive"><Trash2 className="w-3 h-3" /></span>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </main>
+        </div>
+
+        {previewFile && (
+          <EnhancedInstantPreviewModal
+            file={previewFile}
+            isOpen={!!previewFile}
+            onClose={() => setPreviewFile(null)}
+            onDownload={() => handleDownload(previewFile)}
+            onNext={() => { if (previewAdjacents.next) setPreviewFile(previewAdjacents.next as FileItem) }}
+            onPrevious={() => { if (previewAdjacents.previous) setPreviewFile(previewAdjacents.previous as FileItem) }}
+            hasNext={!!previewAdjacents.next}
+            hasPrevious={!!previewAdjacents.previous}
+            currentIndex={previewList.findIndex(f => f.id === previewFile.id)}
+            totalFiles={previewList.length}
+          />
+        )}
+      </div>
+    </ProviderCtx.Provider>
   )
 }
