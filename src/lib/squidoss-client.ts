@@ -268,11 +268,13 @@ const squidoss = {
         return { data: { session: { access_token } }, error: null }
       },
 
-      async admin: any = {
-        async getUserById(userId: string) {
-          const result = await api(`/auth/admin/users/${userId}`)
-          return { data: { user: result.data }, error: result.error }
-        },
+      get admin() {
+        return {
+          async getUserById(userId: string) {
+            const result = await api(`/auth/admin/users/${userId}`)
+            return { data: { user: result.data }, error: result.error }
+          },
+        }
       },
     }
   },
