@@ -353,8 +353,18 @@ const squidoss = {
   },
 
   channel() {
-    return { on: () => this, subscribe: () => this, unsubscribe: () => {} }
+    const ch = {
+      on: () => ch,
+      subscribe: (cb?: (status: string) => void) => {
+        cb?.('SUBSCRIBED')
+        return ch
+      },
+      unsubscribe: () => {},
+      removeChannel: () => {},
+    }
+    return ch
   },
+  removeChannel() {},
 }
 
 export default squidoss
