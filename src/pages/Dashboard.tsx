@@ -300,16 +300,17 @@ export default function Dashboard() {
   const NavItem = ({ id, label, icon: Icon, badge }: { id: string; label: string; icon: any; badge?: number }) => (
     <button onClick={() => { setActiveTab(id as any); setCurrentFolder('') }}
       className={cn(
-        'group relative flex w-full items-center gap-2.5 px-2 h-9 rounded-lg text-sm transition-all',
+        'group relative flex w-full items-center gap-2.5 pl-3 pr-2 h-9 rounded-r-lg text-sm transition-all',
         activeTab === id
-          ? 'bg-primary/10 text-primary font-medium'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-        sidebarCollapsed && 'justify-center px-0 h-10 w-10 mx-auto',
+          ? 'bg-primary/10 text-primary font-medium border-l-2 border-primary'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent/40 border-l-2 border-transparent',
+        sidebarCollapsed && 'justify-center px-0 h-10 w-10 mx-auto border-l-0 rounded-lg',
       )} title={sidebarCollapsed ? label : undefined}>
-      <icon className="w-4 h-4 flex-shrink-0" weight={activeTab === id ? 'fill' : 'regular'} />
+      {activeTab === id && !sidebarCollapsed && <div className="absolute left-0 top-1 bottom-1 w-0.5 bg-primary rounded-full" />}
+      <icon className="w-4 h-4 flex-shrink-0" />
       {!sidebarCollapsed && <span className="flex-1 text-left text-[13px]">{label}</span>}
       {!sidebarCollapsed && badge !== undefined && badge > 0 && (
-        <Badge variant="secondary" className="h-5 min-w-[20px] px-1 text-[10px]">{badge}</Badge>
+        <Badge variant="secondary" className="h-5 min-w-[20px] px-1 text-[10px] font-mono">{badge}</Badge>
       )}
     </button>
   )
