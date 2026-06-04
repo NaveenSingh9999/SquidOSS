@@ -1,11 +1,10 @@
 # SquidOSS Windows Installer
 #
-# One-liner (run in cmd.exe or PowerShell):
-#   powershell -c "iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1'))"
+# One-liner (run in cmd.exe):
+#   curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1 -o %TEMP%\squidoss.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\squidoss.ps1
 #
-# Or save and run in PowerShell as Administrator:
-#   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-#   .\install.ps1
+# Or save as install.ps1 and run in PowerShell:
+#   powershell -ExecutionPolicy Bypass -File install.ps1
 
 # Enable TLS 1.2 (required for GitHub downloads on older Windows 10 / PowerShell 5)
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

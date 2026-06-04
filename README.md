@@ -20,7 +20,7 @@
 curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/install.sh | bash
 ```
 
-<sup>Windows?</sup>&ensp;<code><sup>powershell -c "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;iex((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1'))"</sup></code>
+<sup>Windows (cmd.exe)?</sup>&ensp;<code><sup>curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1 -o %TEMP%\squidoss.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\squidoss.ps1</sup></code>
 
 **SquidOSS** is a production-ready, self-hosted file storage platform that gives you Google Drive / Dropbox-level functionality — without paying per-seat, per-GB, or per-API-call. Built for developers who want control and users who want privacy.
 
