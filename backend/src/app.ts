@@ -105,16 +105,20 @@ export async function buildApp() {
         "CREATE TABLE IF NOT EXISTS public.app_settings (" +
             "key text NOT NULL," +
             "value text NOT NULL," +
-            "user_id uuid REFERENCES auth.users(id)," +
+            "user_id uuid," +
             "created_at timestamp with time zone DEFAULT now()," +
-            "updated_at timestamp with time zone DEFAULT now()," +
-            "PRIMARY KEY (key, COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid))" +
+            "updated_at timestamp with time zone DEFAULT now()" +
         ")",
         'CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions',
       ]
 
       for (const stmt of statements) {
-        await sql.unsafe(stmt)
+        try {
+          await sql.unsafe(stmt)
+        } catch (e: any) {
+          request.log.error({ stmt, error: e.message }, 'Init statement failed')
+          throw e
+        }
       }
 
       return { schema: 'created' }
