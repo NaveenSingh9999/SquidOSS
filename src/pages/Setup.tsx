@@ -9,7 +9,7 @@ import {
   ArrowLeft, ArrowRight, Check, Shield, HardDrive,
   Cloud, Globe, Server, UserPlus, Users, Sparkles,
   Eye, Share2, BarChart3, FileText, GitBranch,
-  Database, Disc, Hdd, Zap, Star,
+  Zap, Star, Folder,
 } from '@/lib/icon-map'
 
 const API_URL = import.meta.env.VITE_SQUIDOSS_API_URL || 'http://localhost:3000'
@@ -45,7 +45,7 @@ const STORAGE_PROVIDERS = [
     id: 'local' as const,
     title: 'Local Storage',
     description: 'Store on local drives, partitions, or mounted volumes',
-    icon: Disc,
+    icon: HardDrive,
     longDesc: 'Direct-attached storage — SSDs, HDDs, NAS mounts, or any local filesystem path.',
   },
   {
@@ -398,12 +398,12 @@ export default function Setup() {
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-3">
                               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selected ? 'bg-primary/15' : 'bg-muted/50'}`}>
-                                <Disc className={`w-5 h-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
+                                <HardDrive className={`w-5 h-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
                               </div>
                               <div>
                                 <div className="font-semibold text-sm flex items-center gap-2">
                                   <span className="font-mono">{d.device.replace('/dev/', '')}</span>
-                                  {selected && <Star className="w-3 h-3 text-primary fill-primary" />}
+                                  {selected && <Star className="w-3 h-3 text-primary" />}
                                 </div>
                                 <p className="text-xs text-muted-foreground font-mono mt-0.5">{d.mount}</p>
                               </div>
@@ -441,7 +441,7 @@ export default function Setup() {
                       className="font-mono text-sm" />
                   </div>
                   <Button variant="outline" size="icon" className="shrink-0" title="Detect drives" onClick={fetchDrives}>
-                    <HardDrive className="w-4 h-4" />
+                    <Zap className="w-4 h-4" />
                   </Button>
                 </div>
                 {data.providerConfig.path && (
