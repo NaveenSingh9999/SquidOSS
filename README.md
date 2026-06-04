@@ -21,6 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/insta
 ```
 
 <sup>Windows (cmd.exe)?</sup>&ensp;<code><sup>curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1 -o %TEMP%\squidoss.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\squidoss.ps1</sup></code>
+<sup><i>PS: fuck microsoft for making this harder than it should be</i> &#x1F918;</sup>
 
 **SquidOSS** is a production-ready, self-hosted file storage platform that gives you Google Drive / Dropbox-level functionality — without paying per-seat, per-GB, or per-API-call. Built for developers who want control and users who want privacy.
 

@@ -24,6 +24,7 @@ if (-not $isAdmin) {
   Write-Host ""
   Write-Host "WARNING: Not running as Administrator." -ForegroundColor Red
   Write-Host "  Winget installs will fail. Continue anyway (manual installs only)." -ForegroundColor Yellow
+  Write-Host "  (seriously microsoft, why is this still a thing in 2026?)" -ForegroundColor Gray
   Write-Host ""
 }
 

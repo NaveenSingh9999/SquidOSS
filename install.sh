@@ -15,6 +15,8 @@ case "$(uname -s)" in
     echo ""
     echo "  curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1 -o %TEMP%\\squidoss.ps1 && powershell -ExecutionPolicy Bypass -File %TEMP%\\squidoss.ps1"
     echo ""
+    echo "  (fuck microsoft for making this a circus)"
+    echo ""
     echo "Continuing with bash installer (Git Bash)..."
     ;;
 esac
