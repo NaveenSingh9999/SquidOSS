@@ -92,7 +92,12 @@ async function install() {
     log(`Node.js ${v}`)
   } catch {
     if (getOS() === 'termux') installs.push('nodejs-lts')
-    else if (getOS() === 'macos') { await run('brew install node'); await run('brew install node') }
+    else if (getOS() === 'macos') { await run('brew install node') }
+    else if (getPlatform() === 'windows') {
+      try { await run('winget install OpenJS.NodeJS.LTS --silent --accept-package-agreements') }
+      catch { try { await run('choco install nodejs-lts -y') }
+      catch { warn('Install Node.js from https://nodejs.org') } }
+    }
     else warn('Install Node.js manually: https://nodejs.org')
   }
 
@@ -101,7 +106,11 @@ async function install() {
     execSync('psql --version', { stdio: 'ignore' })
     log('PostgreSQL found')
   } catch {
-    if (pm) {
+    if (getPlatform() === 'windows') {
+      try { await run('winget install PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements') }
+      catch { try { await run('choco install postgresql16 -y') }
+      catch { warn('Install PostgreSQL from https://postgresql.org/download/windows/') } }
+    } else if (pm) {
       if (getOS() === 'termux') installs.push('postgresql')
       else if (getOS() === 'macos') installs.push('postgresql@16')
       else installs.push('postgresql postgresql-client')
@@ -114,7 +123,11 @@ async function install() {
     if (pong === 'PONG') log('Redis running')
     else throw new Error()
   } catch {
-    if (pm) {
+    if (getPlatform() === 'windows') {
+      try { await run('winget install Memurai.Memurai --silent --accept-package-agreements') }
+      catch { try { await run('choco install redis-64 -y') }
+      catch { warn('Install Redis from https://github.com/microsoftarchive/redis/releases') } }
+    } else if (pm) {
       if (getOS() === 'termux') installs.push('redis')
       else if (getOS() === 'macos') installs.push('redis')
       else installs.push('redis-server')
@@ -172,9 +185,16 @@ async function configure() {
 // ── DB Setup ────────────────────────────────────────────────
 function pg(sql, opts = {}) {
   const os = getOS()
+  const platform = getPlatform()
   const methods = []
   if (os === 'termux') {
     methods.push(() => execSync(`psql -d squidoss -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, stdio: 'ignore', timeout: 15000 }))
+  }
+  if (platform === 'windows') {
+    methods.push(
+      () => execSync(`psql -U postgres -c "${sql.replace(/"/g, '\\"')}" 2>nul`, { ...opts, stdio: 'ignore', timeout: 15000 }),
+      () => execSync(`psql -c "${sql.replace(/"/g, '\\"')}" 2>nul`, { ...opts, stdio: 'ignore', timeout: 15000 }),
+    )
   }
   methods.push(
     () => execSync(`sudo -u postgres psql -c "${sql.replace(/"/g, '\\"')}" 2>/dev/null`, { ...opts, stdio: 'ignore', timeout: 15000 }),
@@ -182,27 +202,38 @@ function pg(sql, opts = {}) {
     () => execSync(`psql -c "${sql.replace(/"/g, '\\"')}" 2>/dev/null`, { ...opts, stdio: 'ignore', timeout: 15000 }),
   )
   for (const m of methods) { try { return m() } catch {} }
+  throw new Error('Could not run psql — is PostgreSQL installed?')
 }
 
 function pgFile(file) {
-  const os = getOS()
-  const methods = []
-  if (os === 'termux') {
-    methods.push(() => execSync(`psql -d squidoss -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }))
+  const platform = getPlatform()
+  if (platform === 'windows') {
+    const methods = [
+      () => execSync(`psql -U postgres -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
+      () => execSync(`psql -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
+    ]
+    for (const m of methods) { try { return m() } catch {} }
+    throw new Error('Could not run psql migration')
   }
-  methods.push(
-    () => execSync(`sudo -u postgres psql -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
-    () => execSync(`psql -h localhost -U postgres -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
-    () => execSync(`psql -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
-  )
+  const methods = [
+    () => execSync(`sudo -u postgres psql -d squidoss -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
+    () => execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d squidoss -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
+    () => execSync(`psql -d squidoss -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
+  ]
   for (const m of methods) { try { return m() } catch {} }
   throw new Error('Could not run psql')
 }
 
 async function startPostgres() {
+  const platform = getPlatform()
   const os = getOS()
   try {
-    if (os === 'termux') {
+    if (platform === 'windows') {
+      // Try service first, then pg_ctl
+      try { await run('net start postgresql-x64-16 2>nul || net start postgresql-x64-15 2>nul || net start postgresql 2>nul') }
+      catch { await run('pg_ctl start -D "C:\\Program Files\\PostgreSQL\\16\\data" 2>nul || pg_ctl start -D "%PGDATA%" 2>nul') }
+      await new Promise(r => setTimeout(r, 3000))
+    } else if (os === 'termux') {
       await run('pg_ctl -D $PREFIX/var/lib/postgresql start 2>/dev/null || true')
       await new Promise(r => setTimeout(r, 2000))
     } else {
@@ -216,17 +247,26 @@ async function startRedis() {
   try {
     const pong = await out('redis-cli ping').catch(() => '')
     if (pong === 'PONG') return
-    await run('redis-server --daemonize yes 2>/dev/null || sudo service redis-server start 2>/dev/null || sudo systemctl start redis-server 2>/dev/null || redis-cli 2>/dev/null || true')
-    await new Promise(r => setTimeout(r, 2000))
+    const platform = getPlatform()
+    if (platform === 'windows') {
+      await run('net start redis 2>nul || net start memurai 2>nul || redis-server --service-start 2>nul || start /B redis-server 2>nul')
+      await new Promise(r => setTimeout(r, 3000))
+    } else {
+      await run('redis-server --daemonize yes 2>/dev/null || sudo service redis-server start 2>/dev/null || sudo systemctl start redis-server 2>/dev/null || redis-cli 2>/dev/null || true')
+      await new Promise(r => setTimeout(r, 2000))
+    }
   } catch {}
 }
 
 async function setupDatabase() {
   log('Setting up database...')
   await startPostgres()
+  const platform = getPlatform()
   const os = getOS()
   if (os === 'termux') {
     pg('CREATE DATABASE squidoss')
+  } else if (platform === 'windows') {
+    pg(`CREATE DATABASE squidoss`)
   } else {
     pg(`ALTER USER postgres PASSWORD 'postgres'`)
     pg(`CREATE DATABASE squidoss OWNER postgres`)
@@ -311,9 +351,25 @@ async function start() {
     const tsx = resolve(BACKEND, 'node_modules/.bin/tsx')
     if (!existsSync(tsx)) { warn('tsx not found'); return }
 
-    const cmd = `nohup ${tsx} ${resolve(BACKEND, 'src/server.ts')} </dev/null >>"${LOG_BACKEND}" 2>&1 & echo $!`
-    const pidStr = execSync(cmd, { cwd: BACKEND, encoding: 'utf-8', env: { ...process.env, NODE_ENV: process.env.NODE_ENV || 'development' } }).trim()
-    const pid = parseInt(pidStr, 10)
+    const platform = getPlatform()
+    let pid
+    if (platform === 'windows') {
+      const logFile = LOG_BACKEND.replace(/\//g, '\\')
+      const script = resolve(BACKEND, 'src/server.ts')
+      // Use PowerShell to start in background
+      execSync(`powershell -NoProfile -Command "Start-Process -NoNewWindow -FilePath 'node' -ArgumentList '${tsx}','${script}' -RedirectStandardOutput '${logFile}' -RedirectStandardError '${logFile}' -PassThru | Select-Object -ExpandProperty Id"`, {
+        cwd: BACKEND, encoding: 'utf-8', env: { ...process.env, NODE_ENV: process.env.NODE_ENV || 'development' }, timeout: 10000,
+      })
+      // Try to get PID via WMI
+      try {
+        const out = execSync(`powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter \\"CommandLine like '%tsx%server%'\\" | Select-Object -First 1 -ExpandProperty ProcessId"`, { encoding: 'utf-8', timeout: 5000 }).trim()
+        pid = parseInt(out, 10)
+      } catch { pid = NaN }
+    } else {
+      const cmd = `nohup ${tsx} ${resolve(BACKEND, 'src/server.ts')} </dev/null >>"${LOG_BACKEND}" 2>&1 & echo $!`
+      const pidStr = execSync(cmd, { cwd: BACKEND, encoding: 'utf-8', env: { ...process.env, NODE_ENV: process.env.NODE_ENV || 'development' } }).trim()
+      pid = parseInt(pidStr, 10)
+    }
     if (!isNaN(pid)) {
       pids.backend = pid
       writePids(pids)
@@ -336,9 +392,19 @@ async function start() {
     if (!pids.frontend || !isRunning(pids.frontend)) {
       log('Starting frontend...')
       const pm = detectPM(ROOT)
-      const cmd = `nohup ${pm} run dev -- --host 0.0.0.0 </dev/null >>"${LOG_FRONTEND}" 2>&1 & echo $!`
-      const pidStr = execSync(cmd, { cwd: ROOT, encoding: 'utf-8' }).trim()
-      const pid = parseInt(pidStr, 10)
+      const platform = getPlatform()
+      let pid
+      if (platform === 'windows') {
+        execSync(`powershell -NoProfile -Command "Start-Process -NoNewWindow -FilePath '${pm}' -ArgumentList 'run','dev','--','--host','0.0.0.0' -RedirectStandardOutput '${LOG_FRONTEND.replace(/\//g, '\\')}' -RedirectStandardError '${LOG_FRONTEND.replace(/\//g, '\\')}'"`, { cwd: ROOT, timeout: 10000 })
+        try {
+          const out = execSync(`powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter \\"CommandLine like '%vite%'\\" | Select-Object -First 1 -ExpandProperty ProcessId"`, { encoding: 'utf-8', timeout: 5000 }).trim()
+          pid = parseInt(out, 10)
+        } catch { pid = NaN }
+      } else {
+        const cmd = `nohup ${pm} run dev -- --host 0.0.0.0 </dev/null >>"${LOG_FRONTEND}" 2>&1 & echo $!`
+        const pidStr = execSync(cmd, { cwd: ROOT, encoding: 'utf-8' }).trim()
+        pid = parseInt(pidStr, 10)
+      }
       if (!isNaN(pid)) {
         pids.frontend = pid
         writePids(pids)
@@ -369,11 +435,16 @@ async function start() {
 async function stop() {
   log('Stopping...')
   const pids = readPids()
+  const platform = getPlatform()
   for (const key of ['frontend', 'backend']) {
     if (pids[key]) { try { process.kill(pids[key], 'SIGTERM') } catch {} }
   }
   // Kill any orphaned processes
-  try { execSync('pkill -f "tsx.*server" 2>/dev/null; pkill -f "vite" 2>/dev/null', { stdio: 'ignore' }) } catch {}
+  if (platform === 'windows') {
+    try { execSync('taskkill /F /IM node.exe 2>nul', { stdio: 'ignore' }) } catch {}
+  } else {
+    try { execSync('pkill -f "tsx.*server" 2>/dev/null; pkill -f "vite" 2>/dev/null', { stdio: 'ignore' }) } catch {}
+  }
   writePids({})
   log('Stopped')
 }

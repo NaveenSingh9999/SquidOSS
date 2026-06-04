@@ -64,10 +64,14 @@ install_system_deps() {
       brew install node postgresql@16 redis git
       ;;
     windows)
-      print_skip "Windows: install Node.js, PostgreSQL, Redis manually"
-      print_skip "  Node: https://nodejs.org"
-      print_skip "  PostgreSQL: https://www.postgresql.org/download/windows/"
-      print_skip "  Redis: https://github.com/microsoftarchive/redis/releases"
+      print_step "Installing Node.js..."
+      winget install OpenJS.NodeJS.LTS --silent --accept-package-agreements 2>/dev/null && print_ok "Node.js installed" || print_skip "Install Node.js from https://nodejs.org"
+      print_step "Installing Git..."
+      winget install Git.Git --silent --accept-package-agreements 2>/dev/null && print_ok "Git installed" || print_skip "Install Git from https://git-scm.com"
+      print_step "Installing PostgreSQL..."
+      winget install PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements 2>/dev/null && print_ok "PostgreSQL installed" || print_skip "Install PostgreSQL from https://postgresql.org/download/windows/"
+      print_step "Installing Redis..."
+      winget install Memurai.Memurai --silent --accept-package-agreements 2>/dev/null && print_ok "Redis (Memurai) installed" || print_skip "Install Redis from https://github.com/microsoftarchive/redis/releases"
       ;;
   esac
 }

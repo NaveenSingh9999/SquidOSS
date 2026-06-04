@@ -20,6 +20,8 @@
 curl -fsSL https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/install.sh | bash
 ```
 
+<sup>Windows?</sup>&ensp;<code><sup>powershell -c "iex ((New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/NaveenSingh9999/SquidOSS/main/scripts/install.ps1'))"</sup></code>
+
 **SquidOSS** is a production-ready, self-hosted file storage platform that gives you Google Drive / Dropbox-level functionality — without paying per-seat, per-GB, or per-API-call. Built for developers who want control and users who want privacy.
 
 > Based on CloudBliss Storage v11. **Completely rewritten** to remove all third-party dependencies (no Supabase, no Firebase, no Stripe, no Sentry).
