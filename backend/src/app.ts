@@ -270,18 +270,20 @@ export async function startServer() {
 
   // Auto-run migrations if schema doesn't exist
   try {
-    const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS exists`
+    const [hasAuth] = await sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') AS "exists"`
     if (!hasAuth?.exists) {
-      app.log.info('Schema not found — running migrations...')
-      const __dirname = dirname(fileURLToPath(import.meta.url))
-      const migration = readFileSync(join(__dirname, '../migrations/001_schema.sql'), 'utf-8')
-      await sql.unsafe(migration as any)
+      app.log.info('Schema tables not found — running migrations...')
+      const migrationPath = join(process.cwd(), 'migrations', '001_schema.sql')
+      app.log.info(`Reading migration file: ${migrationPath}`)
+      const migration = readFileSync(migrationPath, 'utf-8')
+      await sql.unsafe(migration)
       app.log.info('Migrations applied successfully')
     } else {
       app.log.info('Schema already up to date')
     }
   } catch (err: any) {
-    app.log.warn(`Migration check failed (non-fatal): ${err.message}`)
+    app.log.error(`Migration failed: ${err.message}`)
+    throw err
   }
 
   // Redis is optional - start gracefully
