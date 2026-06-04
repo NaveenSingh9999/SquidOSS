@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/placeholder.svg" alt="SquidOSS" width="80" height="80" style="border-radius: 12px;">
+  <img src="public/icon.png" alt="SquidOSS" width="80" height="80" style="border-radius: 12px;">
 </p>
 
 <h1 align="center">SquidOSS</h1>
