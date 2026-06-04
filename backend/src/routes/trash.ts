@@ -32,7 +32,7 @@ export default async function trashRoutes(app: FastifyInstance) {
     }
 
     if (action === 'cleanup') {
-      await sql`SELECT cleanup_trashed_files(${userId})`
+      await sql`DELETE FROM files WHERE user_id = ${userId} AND is_deleted = true`
       return { success: true, message: 'Trash cleaned up' }
     }
 
@@ -41,7 +41,10 @@ export default async function trashRoutes(app: FastifyInstance) {
     }
 
     if (action === 'restore') {
-      await sql`SELECT restore_from_trash(${fileId}, ${userId})`
+      await sql`
+        UPDATE files SET is_deleted = false, deleted_at = NULL
+        WHERE id = ${fileId} AND user_id = ${userId}
+      `
       return { success: true, message: 'File restored' }
     }
 

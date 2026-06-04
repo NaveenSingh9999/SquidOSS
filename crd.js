@@ -152,7 +152,11 @@ async function configure() {
   } catch {}
 
   let config = readFileSync(ENV_EXAMPLE, 'utf-8')
-  config = config.replace(/DATABASE_URL=.*/, `DATABASE_URL=postgres://${getOS() === 'termux' ? '' : 'postgres:postgres@'}localhost:5432/squidoss`)
+  const os = getOS()
+  const dbUrl = os === 'termux'
+    ? 'postgres://localhost:5432/squidoss'
+    : 'postgres://postgres:postgres@localhost:5432/squidoss'
+  config = config.replace(/DATABASE_URL=.*/, `DATABASE_URL=${dbUrl}`)
   config = config.replace(/REDIS_URL=.*/, 'REDIS_URL=redis://localhost:6379')
   config = config.replace(/JWT_SECRET=.*/, `JWT_SECRET=${randomBytes(32).toString('hex')}`)
   config = config.replace(/ENCRYPTION_KEY_SALT=.*/, `ENCRYPTION_KEY_SALT=${randomBytes(16).toString('hex')}`)
@@ -476,35 +480,187 @@ async function restart() {
   await start()
 }
 
+// ── Ensure Node.js is installed ──────────────────────────────
+async function ensureNode() {
+  const tryNode = (cmd) => {
+    try { execSync(`${cmd} --version`, { stdio: 'ignore' }); return cmd }
+    catch { return null }
+  }
+  let found = tryNode('node') || tryNode('nodejs')
+  if (found) return found
+
+  const os = getOS()
+  const platform = getPlatform()
+  warn('Node.js not found — attempting installation...')
+
+  if (platform === 'windows') {
+    // Use winget (Win 10+), fall back to downloading MSI
+    try {
+      log('Trying winget...')
+      execSync('winget install OpenJS.NodeJS.LTS --silent --accept-package-agreements', { stdio: 'inherit', timeout: 120000 })
+    } catch {
+      try {
+        log('Trying chocolatey...')
+        execSync('choco install nodejs-lts -y', { stdio: 'inherit', timeout: 120000 })
+      } catch {
+        log('Downloading Node.js installer...')
+        const url = 'https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi'
+        const msi = resolve(ROOT, 'node-install.msi')
+        try {
+          const curl = execSync('where curl', { encoding: 'utf-8', stdio: 'pipe' }).trim()
+          execSync(`"${curl}" -fsSL "${url}" -o "${msi}"`, { stdio: 'inherit', timeout: 120000 })
+        } catch {
+          try {
+            const powershell = execSync('where powershell', { encoding: 'utf-8', stdio: 'pipe' }).trim()
+            execSync(`"${powershell}" -NoProfile -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${msi}'"`, { stdio: 'inherit', timeout: 120000 })
+          } catch {
+            err('Download failed — install Node.js from https://nodejs.org')
+            return null
+          }
+        }
+        try {
+          execSync(`msiexec /i "${msi}" /quiet /norestart`, { stdio: 'inherit', timeout: 180000 })
+        } catch {
+          err('MSI install failed — run it manually from SquidOSS folder')
+          return null
+        } finally {
+          try { execSync(`del "${msi}"`, { stdio: 'ignore' }) } catch {}
+        }
+      }
+    }
+  } else if (os === 'macos') {
+    if (!tryNode('brew')) {
+      log('Installing Homebrew...')
+      try {
+        execSync('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', { stdio: 'inherit', timeout: 300000 })
+      } catch {
+        err('Homebrew install failed — install Node.js from https://nodejs.org')
+        return null
+      }
+    }
+    try {
+      execSync('brew install node', { stdio: 'inherit', timeout: 180000 })
+    } catch {
+      err('brew install node failed'); return null
+    }
+  } else if (os === 'termux') {
+    try {
+      execSync('pkg install -y nodejs-lts', { stdio: 'inherit', timeout: 120000 })
+    } catch {
+      err('pkg install nodejs-lts failed'); return null
+    }
+  } else {
+    // Linux — try package manager
+    let installed = false
+    for (const [check, installCmd] of [
+      ['apt-get --version', 'apt-get install -y nodejs npm'],
+      ['pacman --version', 'pacman -S --noconfirm nodejs npm'],
+      ['dnf --version', 'dnf install -y nodejs npm'],
+      ['yum --version', 'yum install -y nodejs npm'],
+      ['apk --version', 'apk add nodejs npm'],
+    ]) {
+      try {
+        execSync(check, { stdio: 'ignore' })
+        log(`Installing via ${installCmd.split(' ')[0]}...`)
+        execSync(`sudo ${installCmd}`, { stdio: 'inherit', timeout: 180000 })
+        installed = true
+        break
+      } catch {}
+    }
+    if (!installed) {
+      // Try NodeSource as last resort
+      try {
+        execSync('curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -', { stdio: 'inherit', timeout: 60000 })
+        execSync('sudo apt-get install -y nodejs', { stdio: 'inherit', timeout: 120000 })
+        installed = true
+      } catch {
+        err('Could not install Node.js — go to https://nodejs.org')
+        return null
+      }
+    }
+  }
+
+  // Re-check after install
+  found = tryNode('node') || tryNode('nodejs')
+  if (found) {
+    log(`Node.js installed successfully (${execSync(`${found} --version`, { encoding: 'utf-8' }).trim()})`)
+    return found
+  }
+  err('Node.js install completed but command not found — restart your terminal')
+  return null
+}
+
 // ── Launcher ─────────────────────────────────────────────────
 async function launcher() {
   const platform = getPlatform()
   log(`Creating launcher for ${platform}...`)
 
-  // Use favicon for logo
+  // ── Validate prerequisites ──────────────────────────────────
+  if (!existsSync(resolve(BACKEND, '.env'))) {
+    warn('.env not found — run `./crd configure` first')
+    return false
+  }
+  let nodeCmd = await ensureNode()
+  if (!nodeCmd) { warn('Node.js required — launcher aborted'); return false }
+
+  // ── Logo: convert favicon to platform-native format ─────────
+  // macOS: .png works in plist (no .icns needed for modern macOS)
+  // Linux: .png
+  // Windows: .ico stays as-is
   const favicon = resolve(ROOT, 'public/favicon.ico')
   const placeholder = resolve(ROOT, 'public/placeholder.svg')
-  const logoSource = existsSync(favicon) ? favicon : placeholder
+  let logoPng = favicon // default fallback
+  if (!existsSync(favicon)) {
+    logoPng = placeholder
+    warn('No public/favicon.ico found — using placeholder')
+  }
+  // For platforms needing PNG, try to convert if possible
+  const hasConvert = (() => { try { execSync('convert --version', { stdio: 'ignore' }); return true } catch { return false } })()
 
   if (platform === 'macos') {
-    const appDir = resolve('/Applications', 'SquidOSS.app')
+    // ── Determine writable Applications dir ───────────────────
+    let appDir = resolve('/Applications', 'SquidOSS.app')
+    try {
+      mkdirSync(resolve(appDir, 'Contents'), { recursive: true })
+    } catch {
+      warn('/Applications is not writable — falling back to ~/Applications')
+      appDir = resolve(process.env.HOME || '/tmp', 'Applications', 'SquidOSS.app')
+      try { mkdirSync(resolve(appDir, 'Contents'), { recursive: true }) }
+      catch (e) { err(`Cannot create app bundle at ${appDir}: ${e.message}`); return false }
+    }
+
     const contentsDir = resolve(appDir, 'Contents')
     const macosDir = resolve(contentsDir, 'MacOS')
     const resourcesDir = resolve(contentsDir, 'Resources')
     mkdirSync(macosDir, { recursive: true })
     mkdirSync(resourcesDir, { recursive: true })
 
+    // ── Launcher script ───────────────────────────────────────
     const launcherScript = `#!/bin/bash
-cd "${ROOT}"
-osascript -e 'tell app "Terminal" to do script "cd ${ROOT} && ./crd logs backend"'
-open http://localhost:5173
-./crd start
-echo "SquidOSS running. Close this window to stop."
-read -p "Press Enter to stop..." _
-./crd stop
+set -e
+cd "${ROOT}" 2>/dev/null || { echo "Project directory not found at ${ROOT}"; exit 1; }
+open http://localhost:5173 2>/dev/null || echo "Could not launch browser"
+echo "Starting SquidOSS services..."
+"${ROOT}/crd" start 2>&1 || { echo "crd start failed — check logs"; exit 1; }
+echo ""
+echo "SquidOSS running at http://localhost:5173"
+echo "Press Ctrl+C to stop all services."
+trap "${ROOT}/crd stop 2>/dev/null; exit 0" INT TERM
+# Tail backend logs so user sees output
+tail -f "${ROOT}/.crd-logs/backend.log" 2>/dev/null || read -r
 `
     writeFileSync(resolve(macosDir, 'SquidOSS'), launcherScript)
     execSync(`chmod +x "${resolve(macosDir, 'SquidOSS')}"`)
+    if (!existsSync(resolve(macosDir, 'SquidOSS'))) { err('Failed to write launcher script'); return false }
+
+    // ── Info.plist ────────────────────────────────────────────
+    // macOS accepts .png icons in modern versions; use favicon or placeholder
+    let iconName = 'icon'
+    const iconDest = resolve(resourcesDir, 'icon.png')
+    const iconSrc = hasConvert
+      ? (execSync(`convert "${logoPng}" -resize 256x256 "${iconDest}"`, { stdio: 'pipe' }), iconDest)
+      : logoPng
+    if (!existsSync(iconDest) && iconSrc !== iconDest) copyFileSync(logoPng, iconDest)
 
     const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -517,84 +673,185 @@ read -p "Press Enter to stop..." _
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleIconFile</key><string>icon</string>
-  <key>LSUIElement</key><true/>
+  <key>LSMinimumSystemVersion</key><string>10.15</string>
 </dict>
 </plist>`
     writeFileSync(resolve(contentsDir, 'Info.plist'), plist)
-    copyFileSync(logoSource, resolve(resourcesDir, 'icon.ico'))
-    log(`Created ${appDir}`)
-    log('   Drag SquidOSS.app to Applications folder')
+    log(`Created macOS app: ${appDir}`)
+    log(`  Open with: open "${appDir}"`)
 
   } else if (platform === 'windows') {
-    const launcher = `@echo off
-cd /d "${ROOT}"
-start "" "http://localhost:5173"
-start "SquidOSS Backend" cmd /c "crd logs backend"
-crd start
-echo.
-echo SquidOSS running. Close this window to stop all services.
-pause
-crd stop
+    // ── Create crd.cmd wrapper so `crd` works on Windows ──────
+    const cmdWrapper = `@echo off
+node "%~dp0crd.js" %*
 `
-    writeFileSync(resolve(ROOT, 'start-squidoss.bat'), launcher)
-    log('Created start-squidoss.bat — double-click to run')
+    writeFileSync(resolve(ROOT, 'crd.cmd'), cmdWrapper)
+    log('Created crd.cmd wrapper')
 
-    // Also create a PowerShell launcher
-    const psLauncher = `$ROOT = "${ROOT}"
-$ws = New-Object -ComObject WScript.Shell
+    // ── Verify node is in PATH ────────────────────────────────
+    try { execSync('node --version', { stdio: 'pipe' }) }
+    catch { warn('node not found in PATH — launcher scripts may fail'); return false }
+
+    // ── Create start-squidoss.bat ─────────────────────────────
+    const batLauncher = `@echo off
+cd /d "${ROOT}" 2>nul || ( echo Project directory not found & pause & exit /b 1 )
+start "" "http://localhost:5173"
+echo Starting SquidOSS backend...
+start "SquidOSS Backend" cmd /c "node \"${ROOT}\\crd.js\" logs backend"
+node "${ROOT}\\crd.js" start
+if %errorlevel% neq 0 ( echo crd start failed — check output above & pause & exit /b 1 )
+echo.
+echo SquidOSS running at http://localhost:5173
+echo Close this window to stop all services.
+pause >nul
+node "${ROOT}\\crd.js" stop
+`
+    writeFileSync(resolve(ROOT, 'start-squidoss.bat'), batLauncher)
+    log('Created start-squidoss.bat')
+
+    // ── Create PowerShell .ps1 launcher ───────────────────────
+    const psLauncher = `$ErrorActionPreference = "Stop"
+$ROOT = "${ROOT}"
+if (!(Test-Path $ROOT)) { Write-Host "Project directory not found: $ROOT" -Foreground Red; Read-Host "Press Enter"; exit 1 }
+try { node --version | Out-Null } catch { Write-Host "Node.js not found in PATH" -Foreground Red; Read-Host "Press Enter"; exit 1 }
 Start-Process "http://localhost:5173"
-Start-Process powershell -ArgumentList "-NoExit -Command cd '$ROOT'; .\\crd logs backend" -WindowStyle Normal
+Write-Host "Starting SquidOSS..."
+Start-Process powershell -ArgumentList "-NoExit -Command cd '$ROOT'; node '$ROOT\\crd.js' logs backend" -WindowStyle Normal
 Set-Location $ROOT
-.\\crd start
-Write-Host "SquidOSS running. Press any key to stop..."
+node "$ROOT\\crd.js" start
+if ($LASTEXITCODE -ne 0) { Write-Host "crd start failed" -Foreground Red; Read-Host "Press Enter"; exit 1 }
+Write-Host "SquidOSS running at http://localhost:5173"
+Write-Host "Press any key to stop..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-.\\crd stop
+node "$ROOT\\crd.js" stop
 `
     writeFileSync(resolve(ROOT, 'start-squidoss.ps1'), psLauncher)
     log('Created start-squidoss.ps1')
 
-  } else {
-    // Linux desktop shortcut
-    const hasDE = !!await out('echo $XDG_CURRENT_DESKTOP').catch(() => '') || !!await out('echo $DISPLAY').catch(() => '')
-    if (hasDE) {
-      const desktopDir = resolve(process.env.HOME || '/tmp', '.local/share/applications')
-      mkdirSync(desktopDir, { recursive: true })
-      const desktopEntry = `[Desktop Entry]
+    // ── Create .lnk desktop shortcut via PowerShell ───────────
+    log('Creating desktop shortcut (SquidOSS)...')
+    const homeDir = process.env.USERPROFILE || process.env.HOMEDRIVE + process.env.HOMEPATH || '.'
+    try {
+      execSync(`powershell -NoProfile -Command "
+        $$wshell = New-Object -ComObject WScript.Shell
+        $$shortcut = $$wshell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\\SquidOSS.lnk')
+        $$shortcut.TargetPath = '${resolve(ROOT, 'start-squidoss.bat')}'
+        $$shortcut.WorkingDirectory = '${ROOT}'
+        $$shortcut.Description = 'SquidOSS Self-Hosted File Storage'
+        $$shortcut.IconLocation = '${logoPng}'
+        $$shortcut.Save()
+        if (Test-Path ([Environment]::GetFolderPath('Desktop') + '\\SquidOSS.lnk')) { exit 0 } else { exit 1 }
+      "`, { stdio: 'pipe', timeout: 15000 })
+      log('Desktop shortcut created')
+    } catch {
+      warn('Could not create .lnk shortcut — PowerShell may be restricted')
+      warn('  Double-click start-squidoss.bat instead')
+    }
+
+  } else if (platform === 'linux') {
+    // ── Termux check (no desktop environment) ─────────────────
+    const os = getOS()
+    if (os === 'termux') {
+      const termuxLauncher = `#!/data/data/com.termux/files/usr/bin/bash
+cd "${ROOT}" 2>/dev/null || { echo "Project not found at ${ROOT}"; exit 1; }
+echo "Starting SquidOSS..."
+echo "Backend: http://localhost:3000"
+echo "Frontend: http://localhost:5173"
+"${ROOT}/crd" start
+echo ""
+echo "Press Enter to stop..."
+read -r _
+"${ROOT}/crd" stop
+`
+      const launcherPath = resolve(ROOT, 'start-squidoss.sh')
+      writeFileSync(launcherPath, termuxLauncher)
+      execSync(`chmod +x "${launcherPath}"`)
+      log('Created start-squidoss.sh (Termux)')
+      log('  Run with: bash start-squidoss.sh')
+      return
+    }
+
+    // ── Detect desktop environment ────────────────────────────
+    const xdgDesktop = await out('echo "$XDG_CURRENT_DESKTOP"').catch(() => '')
+    const hasDisplay = await out('echo "$DISPLAY"').catch(() => '')
+    const hasWayland = await out('echo "$WAYLAND_DISPLAY"').catch(() => '')
+    if (!xdgDesktop && !hasDisplay && !hasWayland) {
+      warn('No desktop environment detected — skipping .desktop shortcut')
+      const shLauncher = `#!/bin/sh
+cd "${ROOT}" 2>/dev/null || { echo "Project not found at ${ROOT}"; exit 1; }
+echo "Starting SquidOSS..."
+echo "Backend: http://localhost:3000"
+echo "Frontend: http://localhost:5173"
+"${ROOT}/crd" start
+echo ""
+echo "Press Enter to stop..."
+read -r _
+"${ROOT}/crd" stop
+`
+      writeFileSync(resolve(ROOT, 'start-squidoss.sh'), shLauncher)
+      execSync(`chmod +x "${resolve(ROOT, 'start-squidoss.sh')}"`)
+      log('Created start-squidoss.sh fallback launcher')
+      return
+    }
+
+    // ── Convert favicon to PNG for Linux DE compatibility ─────
+    let iconPath = logoPng
+    if (logoPng.endsWith('.ico') && hasConvert) {
+      const pngPath = resolve(ROOT, '.crd-icon.png')
+      try {
+        execSync(`convert "${logoPng}" -resize 256x256 "${pngPath}"`, { stdio: 'pipe' })
+        if (existsSync(pngPath)) iconPath = pngPath
+      } catch { warn('ImageMagick convert failed — using raw icon file') }
+    } else if (logoPng.endsWith('.svg')) {
+      iconPath = logoPng // SVG works on modern Linux DEs
+    }
+
+    // ── Determine XDG data & desktop paths ────────────────────
+    const home = process.env.HOME || process.env.HOMEPATH || '/tmp'
+    const xdgDataHome = process.env.XDG_DATA_HOME || resolve(home, '.local/share')
+    const applicationsDir = resolve(xdgDataHome, 'applications')
+    const desktopDir = resolve(home, 'Desktop')
+    mkdirSync(applicationsDir, { recursive: true })
+
+    const desktopFile = `[Desktop Entry]
 Version=1.0
 Type=Application
 Name=SquidOSS
-Comment=SquidOSS File Storage
-Exec=${ROOT}/crd start && xdg-open http://localhost:5173
-Icon=${logoSource}
+Comment=SquidOSS Self-Hosted File Storage
+Exec=sh -c '"${ROOT}/crd" start && xdg-open http://localhost:5173'
+Icon=${iconPath}
 Terminal=true
 Categories=Utility;FileTools;Network;
 StartupNotify=true
+StartupWMClass=SquidOSS
 `
-      writeFileSync(resolve(desktopDir, 'squidoss.desktop'), desktopEntry)
-      execSync(`chmod +x "${resolve(desktopDir, 'squidoss.desktop')}"`)
-      log(`Created ${desktopDir}/squidoss.desktop`)
-    } else {
-      warn('No desktop environment detected, skipping shortcut')
-    }
 
-    // Also create a .desktop on the desktop
-    try {
-      const desktopPath = resolve(process.env.HOME || '/tmp', 'Desktop/squidoss.desktop')
-      const desktopEntry = `[Desktop Entry]
-Version=1.0
-Type=Application
-Name=SquidOSS
-Comment=SquidOSS File Storage
-Exec=${ROOT}/crd run
-Icon=${logoSource}
-Terminal=true
-Categories=Utility;FileTools;Network;
-`
-      writeFileSync(desktopPath, desktopEntry)
-      execSync(`chmod +x "${desktopPath}"`)
-      log(`Created ~/Desktop/squidoss.desktop`)
-    } catch {}
+    // ── Write to applications dir (app menu) ──────────────────
+    const menuPath = resolve(applicationsDir, 'squidoss.desktop')
+    writeFileSync(menuPath, desktopFile)
+    execSync(`chmod +x "${menuPath}"`)
+    if (!existsSync(menuPath)) { err('Failed to write .desktop file'); return false }
+    log(`Created app-menu entry: ${menuPath}`)
+
+    // ── Copy to Desktop if it exists ──────────────────────────
+    if (existsSync(desktopDir)) {
+      const desktopPath = resolve(desktopDir, 'squidoss.desktop')
+      try {
+        writeFileSync(desktopPath, desktopFile)
+        execSync(`chmod +x "${desktopPath}"`)
+        log(`Created desktop icon: ${desktopPath}`)
+      } catch (e) {
+        warn(`Could not write to Desktop (${e.message}) — app-menu entry created instead`)
+      }
+    } else {
+      warn(`No ~/Desktop directory found — icon only in app menu`)
+    }
+  } else {
+    err(`Unsupported platform: ${platform}`)
+    return false
   }
+
+  log('Launcher created successfully')
 }
 
 // ── Run (foreground) ─────────────────────────────────────────

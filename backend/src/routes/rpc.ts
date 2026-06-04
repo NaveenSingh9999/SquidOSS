@@ -12,6 +12,16 @@ export default async function rpcRoutes(app: FastifyInstance) {
     const params = request.body as Record<string, any> || {}
 
     const rpcMap: Record<string, (p: any) => Promise<any>> = {
+      move_to_trash_secure: async (p) => {
+        const [result] = await sql`
+          UPDATE files SET is_deleted = true, deleted_at = NOW()
+          WHERE id = ${p.file_uuid} AND user_id = ${userId}
+          RETURNING id
+        `
+        if (!result) throw new AppError(404, 'File not found')
+        return { success: true }
+      },
+
       delete_file_secure: async (p) => {
         const [result] = await sql`
           UPDATE files SET is_deleted = true, deleted_at = NOW()
