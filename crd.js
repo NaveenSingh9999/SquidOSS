@@ -246,6 +246,22 @@ async function migrate() {
   await setupDatabase()
 
   log('Running full schema migration...')
+  // Drop tables created by init to avoid conflicts
+  const dropTables = [
+    'DROP TABLE IF EXISTS public.files CASCADE',
+    'DROP TABLE IF EXISTS public.folders CASCADE',
+    'DROP TABLE IF EXISTS public.workspaces CASCADE',
+    'DROP TABLE IF EXISTS public.github_repos CASCADE',
+    'DROP TABLE IF EXISTS public.app_settings CASCADE',
+    'DROP TABLE IF EXISTS public.profiles CASCADE',
+    'DROP TABLE IF EXISTS auth.users CASCADE',
+    'DROP SCHEMA IF EXISTS auth CASCADE',
+    'DROP SCHEMA IF EXISTS extensions CASCADE',
+  ]
+  for (const stmt of dropTables) {
+    try { pg(stmt) } catch {}
+  }
+
   try {
     pgFile(MIGRATION_FILE)
     log('Schema applied')
