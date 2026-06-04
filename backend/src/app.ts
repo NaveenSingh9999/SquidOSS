@@ -2,8 +2,7 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
+import { join } from 'path'
 import { config } from './config.js'
 import { testConnection, sql } from './db/index.js'
 import { connectRedis } from './services/redis.js'
@@ -79,19 +78,31 @@ export async function buildApp() {
       if (hasAuth?.exists) {
         return { schema: 'already_exists' }
       }
+      // Use psql to run the migration file (avoids postgres.js escaping issues with large DDL)
+      const { execSync } = await import('child_process')
       const paths = [
         join(process.cwd(), 'backend', 'migrations', '001_schema.sql'),
         join(process.cwd(), 'migrations', '001_schema.sql'),
       ]
-      let migrationFile = ''
+      let migrationPath = ''
       for (const p of paths) {
-        try { migrationFile = readFileSync(p, 'utf-8'); break } catch {}
+        try { readFileSync(p); migrationPath = p; break } catch {}
       }
-      if (!migrationFile) {
+      if (!migrationPath) {
         reply.status(500)
         return { error: 'Migration file not found' }
       }
-      await sql.unsafe(migrationFile)
+      // Try multiple psql methods (same approach as crd.js)
+      const pgMethods = [
+        () => execSync(`sudo -u postgres psql -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000 }),
+        () => execSync(`psql -h localhost -U postgres -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
+        () => execSync(`psql "${config.database.url}" -f "${migrationPath}"`, { stdio: 'pipe', timeout: 60000 }),
+      ]
+      let migrated = false
+      for (const method of pgMethods) {
+        try { method(); migrated = true; break } catch {}
+      }
+      if (!migrated) throw new Error('Could not run migration via psql (try: sudo apt install postgresql-client)')
       return { schema: 'created' }
     } catch (err: any) {
       reply.status(500)
@@ -304,28 +315,36 @@ export async function startServer() {
       const paths = [
         join(process.cwd(), 'backend', 'migrations', '001_schema.sql'),
         join(process.cwd(), 'migrations', '001_schema.sql'),
-        join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'migrations', '001_schema.sql'),
       ]
-      let migrationFile = ''
+      let migrationPath = ''
       for (const p of paths) {
-        try {
-          migrationFile = readFileSync(p, 'utf-8')
-          app.log.info(`Found migration at ${p}`)
-          break
-        } catch {}
+        try { readFileSync(p); migrationPath = p; break } catch {}
       }
-      if (!migrationFile) {
+      if (!migrationPath) {
         app.log.error('Migration file not found in any expected path')
       } else {
-        await sql.unsafe(migrationFile)
-        app.log.info('Migrations applied successfully')
+        app.log.info(`Running migration: ${migrationPath}`)
+        const { execSync } = await import('child_process')
+        const pgMethods = [
+          () => execSync(`sudo -u postgres psql -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000 }),
+          () => execSync(`psql -h localhost -U postgres -f "${migrationPath}" 2>/dev/null`, { stdio: 'pipe', timeout: 60000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
+          () => execSync(`psql "${config.database.url}" -f "${migrationPath}"`, { stdio: 'pipe', timeout: 60000 }),
+        ]
+        let migrated = false
+        for (const method of pgMethods) {
+          try { method(); migrated = true; break } catch {}
+        }
+        if (migrated) {
+          app.log.info('Migrations applied successfully')
+        } else {
+          app.log.warn('Could not run auto-migration. Setup wizard will handle it.')
+        }
       }
     } else {
       app.log.info('Schema already up to date')
     }
   } catch (err: any) {
     app.log.warn(`Migration check failed (non-fatal): ${err.message}`)
-    app.log.warn('The server will start without the schema. Visit /setup to initialize.')
   }
 
   // Redis is optional - start gracefully
