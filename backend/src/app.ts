@@ -110,6 +110,15 @@ export async function buildApp() {
             "created_at timestamp with time zone DEFAULT now()," +
             "updated_at timestamp with time zone DEFAULT now()" +
         ")",
+        "CREATE TABLE IF NOT EXISTS public.github_repos (" +
+            "id SERIAL PRIMARY KEY," +
+            "user_id uuid," +
+            "repo_name text NOT NULL," +
+            "repo_full_name text NOT NULL," +
+            "repo_url text NOT NULL," +
+            "clone_url text," +
+            "created_at timestamp with time zone DEFAULT now()" +
+        ")",
         'CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions',
       ]
 

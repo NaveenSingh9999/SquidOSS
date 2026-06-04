@@ -54,14 +54,63 @@ export default async function storageProviderRoutes(app: FastifyInstance) {
     return { providers, success: true }
   })
 
-  // POST /api/v1/storage/providers/github-init - placeholder for GitHub repo creation
+  // POST /api/v1/storage/providers/github-init - create 10 private repos
   app.post('/api/v1/storage/providers/github-init', async (request) => {
+    const userId = request.user!.sub as string
     const { token, owner } = request.body as any
     if (!token || !owner) {
       throw new AppError(400, 'GitHub token and owner required')
     }
-    // TODO: create 10 private repos via GitHub API
-    return { success: true, message: 'GitHub storage initialized', reposCreated: 10 }
+
+    const repos: Array<{
+      repo_name: string
+      repo_full_name: string
+      repo_url: string
+      clone_url: string
+    }> = []
+
+    for (let i = 0; i < 10; i++) {
+      const repoName = `squidoss-${String(i).padStart(2, '0')}`
+      try {
+        const res = await fetch('https://api.github.com/user/repos', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/vnd.github.v3+json',
+          },
+          body: JSON.stringify({
+            name: repoName,
+            private: true,
+            description: `SquidOSS storage repository ${i + 1}/10`,
+            auto_init: false,
+          }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.message || `Failed to create ${repoName}`)
+        }
+
+        const data = await res.json()
+        repos.push({
+          repo_name: data.name,
+          repo_full_name: data.full_name,
+          repo_url: data.html_url,
+          clone_url: data.clone_url,
+        })
+
+        // Store in DB
+        await sql`
+          INSERT INTO github_repos (user_id, repo_name, repo_full_name, repo_url, clone_url)
+          VALUES (${userId}, ${data.name}, ${data.full_name}, ${data.html_url}, ${data.clone_url})
+        `
+      } catch (e: any) {
+        request.log.error({ repoName, error: e.message }, 'GitHub repo creation failed')
+      }
+    }
+
+    return { success: true, reposCreated: repos.length, repos }
   })
 
   // DELETE /api/v1/storage/providers/:id
