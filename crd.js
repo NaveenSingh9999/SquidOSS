@@ -292,6 +292,29 @@ async function setupDatabase() {
   await startPostgres()
   const platform = getPlatform()
   const os = getOS()
+
+  // If on Linux (not termux/windows), try to set trust auth in pg_hba.conf
+  // before attempting any pg() calls. This works around Codespace sudo restrictions
+  // where `sudo -u postgres psql` is blocked but `sudo` to root is available.
+  if (os !== 'termux' && platform !== 'windows') {
+    try {
+      const hba = execSync('find /etc/postgresql -name pg_hba.conf 2>/dev/null | head -1', { encoding: 'utf-8' }).trim()
+      if (hba) {
+        for (const cmd of [
+          `sed -i 's/local\\s\\+all\\s\\+all\\s\\+peer/local   all             all                                     trust/' "${hba}"`,
+          `sed -i 's/host\\s\\+all\\s\\+all\\s\\+127.0.0.1\\/32\\s\\+scram-sha-256/host    all             all             127.0.0.1\\/32            trust/' "${hba}"`,
+        ]) {
+          // Try with sudo first (required on Codespaces/containers), fall back to direct
+          try { execSync(`sudo sh -c "${cmd.replace(/"/g, '\\"')}"`, { stdio: 'ignore' }) } catch {}
+          try { execSync(cmd, { stdio: 'ignore' }) } catch {}
+        }
+        // Reload PostgreSQL config
+        try { execSync('sudo pg_ctlcluster * main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null || pg_ctl reload 2>/dev/null || true', { stdio: 'ignore' }) } catch {}
+        await new Promise(r => setTimeout(r, 2000))
+      }
+    } catch {}
+  }
+
   if (os === 'termux') {
     pg('CREATE DATABASE squidoss')
   } else if (platform === 'windows') {
@@ -299,17 +322,6 @@ async function setupDatabase() {
   } else {
     pg(`ALTER USER postgres PASSWORD 'postgres'`)
     pg(`CREATE DATABASE squidoss OWNER postgres`)
-    // Set trust auth in pg_hba.conf
-    try {
-      const hba = execSync('find /etc/postgresql -name pg_hba.conf 2>/dev/null | head -1', { encoding: 'utf-8' }).trim()
-      if (hba) {
-        for (const cmd of [
-          `sed -i 's/local\\s\\+all\\s\\+all\\s\\+peer/local   all             all                                     trust/' "${hba}"`,
-          `sed -i 's/host\\s\\+all\\s\\+all\\s\\+127.0.0.1\\/32\\s\\+scram-sha-256/host    all             all             127.0.0.1\\/32            trust/' "${hba}"`,
-        ]) { try { execSync(cmd, { stdio: 'ignore' }) } catch {} }
-        try { execSync('sudo pg_ctlcluster * main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null || true', { stdio: 'ignore' }) } catch {}
-      }
-    } catch {}
   }
 }
 
