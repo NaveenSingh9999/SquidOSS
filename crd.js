@@ -404,7 +404,8 @@ async function buildNative() {
   }
   log('Building native C module...')
   if (!existsSync(resolve(BACKEND, 'build'))) mkdirSync(resolve(BACKEND, 'build'), { recursive: true })
-  const nodeInclude = resolve(process.execPath, '..', 'include')
+  const nodeDir = dirname(process.execPath)
+  const nodeInclude = resolve(nodeDir, '..', 'include')
   const cc = process.env.CC || process.platform === 'win32' ? 'cl.exe' : 'gcc'
   const outFlag = process.platform === 'win32' ? '/Fe:' : '-o '
   const incFlag = process.platform === 'win32' ? '/I' : '-I'

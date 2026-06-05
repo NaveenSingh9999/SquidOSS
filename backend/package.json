@@ -10,7 +10,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "setup": "tsx scripts/setup.ts",
-    "build:native": "gcc -fPIC -shared -I\"$(node -e \"console.log(require('node:path').resolve(process.execPath,'..','include','node'))\")\" src/native/local_storage.c -o build/Release/local_storage.node"
+    "build:native": "gcc -fPIC -shared -I\"$(node -e \"const{dirname,resolve}=require('node:path');console.log(resolve(dirname(process.execPath),'..','include','node'))\")\" src/native/local_storage.c -o build/Release/local_storage.node"
   },
   "keywords": [
     "squidoss",
