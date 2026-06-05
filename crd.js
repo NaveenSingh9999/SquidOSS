@@ -203,8 +203,8 @@ function pg(sql, opts = {}) {
   methods.push(
     // 1. TCP with password (no sudo, works if pg_hba.conf allows md5/scram)
     () => execSync(`psql -h localhost -U postgres -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, timeout: 15000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
-    // 2. Peer auth as current OS user (works if matching PG role exists)
-    () => execSync(`psql -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, timeout: 15000 }),
+    // 2. Peer auth as postgres via Unix socket (works if pg_hba.conf has trust/local)
+    () => execSync(`psql -U postgres -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, timeout: 15000 }),
     // 3. Sudo to postgres user + peer auth (works if PG running, `sudo` available)
     () => execSync(`sudo -u postgres psql -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, timeout: 15000 }),
   )
@@ -300,19 +300,24 @@ async function setupDatabase() {
     try {
       const hba = execSync('find /etc/postgresql -name pg_hba.conf 2>/dev/null | head -1', { encoding: 'utf-8' }).trim()
       if (hba) {
+        log(`Found pg_hba.conf at ${hba}, setting trust auth...`)
         for (const cmd of [
           `sed -i 's/local\\s\\+all\\s\\+all\\s\\+peer/local   all             all                                     trust/' "${hba}"`,
           `sed -i 's/host\\s\\+all\\s\\+all\\s\\+127.0.0.1\\/32\\s\\+scram-sha-256/host    all             all             127.0.0.1\\/32            trust/' "${hba}"`,
         ]) {
           // Try with sudo first (required on Codespaces/containers), fall back to direct
-          try { execSync(`sudo sh -c "${cmd.replace(/"/g, '\\"')}"`, { stdio: 'ignore' }) } catch {}
-          try { execSync(cmd, { stdio: 'ignore' }) } catch {}
+          const sudoCmd = `sudo sh -c "${cmd.replace(/"/g, '\\"')}"`
+          try { execSync(sudoCmd, { stdio: 'pipe' }); log('pg_hba trust set via sudo') } catch (e) {
+            try { execSync(cmd, { stdio: 'pipe' }); log('pg_hba trust set directly') } catch {}
+          }
         }
         // Reload PostgreSQL config
-        try { execSync('sudo pg_ctlcluster * main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null || pg_ctl reload 2>/dev/null || true', { stdio: 'ignore' }) } catch {}
+        try { execSync('sudo pg_ctlcluster * main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null || pg_ctl reload 2>/dev/null || true', { stdio: 'pipe' }) } catch {}
         await new Promise(r => setTimeout(r, 2000))
+      } else {
+        log('pg_hba.conf not found, skipping trust setup')
       }
-    } catch {}
+    } catch (e) { log(`pg_hba.conf setup skipped: ${e.message}`) }
   }
 
   if (os === 'termux') {
