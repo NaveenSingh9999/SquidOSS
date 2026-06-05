@@ -95,6 +95,14 @@ export default async function rpcRoutes(app: FastifyInstance) {
         return { success: true }
       },
 
+      update_profile: async (p) => {
+        await sql`
+          UPDATE auth.users SET full_name = ${p.full_name || p.fullName}
+          WHERE id = ${userId}
+        `
+        return { success: true }
+      },
+
       encrypt_keyring_secret: async (p) => {
         const [secret] = await sql`
           INSERT INTO keyring_secrets (user_id, encrypted_value)

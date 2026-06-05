@@ -1,268 +1,139 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, Lock, User, FileText } from '@/lib/icon-map';
-import { toast } from 'sonner';
+import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Shield, Key, AlertTriangle, Lock, CheckCircle } from '@/lib/icon-map'
 
-const AdminAuth = () => {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  
-  // Form states
-  const [accessKey, setAccessKey] = useState('');
-  const [adminUserId, setAdminUserId] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [accessPurpose, setAccessPurpose] = useState('');
+const API_URL = (() => {
+  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
+  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev'))
+    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
+  return 'http://localhost:3000'
+})().replace(/\/+$/, '')
+
+export default function AdminAuth() {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const [cbisKey, setCbisKey] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [isSudo, setIsSudo] = useState(false)
 
   useEffect(() => {
-    // Redirect if not authenticated
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
-  }, [user, navigate]);
+    if (!user) { navigate('/auth'); return }
+    checkSudoStatus()
+  }, [user])
 
-  const getAccessToken = async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) {
-      throw new Error('Authentication required');
-    }
-    return accessToken;
-  };
-
-  const invokeAdminAuth = async (step: number, payload: Record<string, unknown>) => {
-    const accessToken = await getAccessToken();
-    const { data, error } = await supabase.functions.invoke('admin-auth', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: { step, ...payload }
-    });
-
-    if (error || !data?.success) {
-      throw new Error(error?.message || data?.message || 'Admin verification failed');
-    }
-
-    return data;
-  };
-
-  const handleStep1 = async () => {
-    setLoading(true);
-    setError('');
-    
+  const checkSudoStatus = async () => {
     try {
-      await invokeAdminAuth(1, { accessKey });
-      setCurrentStep(2);
-    } catch (err: any) {
-      setError(err.message || 'Invalid access key. Access denied.');
-    } finally {
-      setLoading(false);
-    }
-  };
+      const token = localStorage.getItem('squidoss_token')
+      const res = await fetch(`${API_URL}/api/v1/cbis/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      setIsSudo(data.isSudo)
+    } catch {}
+  }
 
-  const handleStep2 = async () => {
-    setLoading(true);
-    setError('');
-    
+  // If already logged in as sudo with verified session, go straight to admin dash
+  const adminSession = localStorage.getItem('admin_session_verified')
+  if (adminSession && isSudo) {
+    const elapsed = Date.now() - parseInt(adminSession)
+    if (elapsed < 3600000) {
+      navigate('/admin/dashboard')
+    }
+  }
+
+  const handleVerify = async () => {
+    if (!cbisKey.trim()) { setError('Enter your CBIS private key'); return }
+    setLoading(true)
+    setError('')
+
     try {
-      await invokeAdminAuth(2, {});
-      setCurrentStep(3);
-    } catch (err: any) {
-      setError(err.message || 'Access denied. Admin privileges required.');
-    } finally {
-      setLoading(false);
+      const token = localStorage.getItem('squidoss_token')
+      const res = await fetch(`${API_URL}/api/v1/cbis/verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ cbisKey: cbisKey.trim() }),
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error || 'Verification failed')
+      localStorage.setItem('admin_session_verified', Date.now().toString())
+      navigate('/admin/dashboard')
+    } catch (e: any) {
+      setError(e.message || 'Invalid CBIS key')
     }
-  };
-
-  const handleStep3 = async () => {
-    setLoading(true);
-    setError('');
-    
-    try {
-      await invokeAdminAuth(3, { adminUserId, adminPassword });
-      setCurrentStep(4);
-    } catch (err: any) {
-      setError(err.message || 'Invalid admin credentials.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStep4 = async () => {
-    setLoading(true);
-    setError('');
-    
-    try {
-      await invokeAdminAuth(4, { accessPurpose });
-      localStorage.setItem('admin_session_verified', Date.now().toString());
-      toast.success('Admin access granted!');
-      navigate('/ad/u1/get_ad/dash');
-    } catch (err: any) {
-      setError(err.message || 'Please enter a valid access purpose.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const renderStep = () => {
-    switch (currentStep) {
-      case 1:
-        return (
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Step 1: Access Key Verification
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Enter the 12-character alphanumeric access code:
-              </p>
-              <Input
-                type="password"
-                placeholder="Enter access key"
-                value={accessKey}
-                onChange={(e) => setAccessKey(e.target.value)}
-                maxLength={12}
-              />
-              <Button onClick={handleStep1} disabled={loading} className="w-full">
-                {loading ? 'Verifying...' : 'Verify Access Key'}
-              </Button>
-            </CardContent>
-          </Card>
-        );
-        
-      case 2:
-        return (
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Step 2: Admin Account Verification
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Checking admin privileges for user: {user?.email}
-              </p>
-              <Button onClick={handleStep2} disabled={loading} className="w-full">
-                {loading ? 'Checking...' : 'Verify Admin Status'}
-              </Button>
-            </CardContent>
-          </Card>
-        );
-        
-      case 3:
-        return (
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5" />
-                Step 3: Admin Credentials
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Admin User ID:</label>
-                <Input
-                  type="text"
-                  placeholder="Enter admin user ID"
-                  value={adminUserId}
-                  onChange={(e) => setAdminUserId(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Admin Password:</label>
-                <Input
-                  type="password"
-                  placeholder="Enter admin password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleStep3} disabled={loading} className="w-full">
-                {loading ? 'Verifying...' : 'Verify Credentials'}
-              </Button>
-            </CardContent>
-          </Card>
-        );
-        
-      case 4:
-        return (
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Step 4: Access Purpose
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Please enter your purpose for accessing the admin dashboard:
-              </p>
-              <textarea
-                className="w-full p-3 border rounded-md resize-none"
-                rows={4}
-                placeholder="Describe your purpose for admin access..."
-                value={accessPurpose}
-                onChange={(e) => setAccessPurpose(e.target.value)}
-              />
-              <Button onClick={handleStep4} disabled={loading} className="w-full">
-                {loading ? 'Logging...' : 'Complete Authentication'}
-              </Button>
-            </CardContent>
-          </Card>
-        );
-        
-      default:
-        return null;
-    }
-  };
+    setLoading(false)
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">
-            🔒 SquidCloud Admin Access
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Multi-Layer Authentication System
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden p-4"
+      style={{ background: 'hsl(222 47% 9.5%)' }}>
+      <div className="absolute inset-0 opacity-[0.02]"
+        style={{ backgroundImage: 'radial-gradient(circle at 50% 0%, hsl(0 100% 50%) 0%, transparent 50%)' }} />
+
+      <div className="relative w-full max-w-sm space-y-6">
+        <div className="text-center space-y-3">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-red-500/10 flex items-center justify-center ring-1 ring-amber-500/20">
+            <Shield className="w-8 h-8 text-amber-400" />
+          </div>
+          <h1 className="text-2xl font-bold">Admin Access</h1>
+          <p className="text-muted-foreground text-sm">
+            {isSudo
+              ? 'Authenticate with your CBIS key to access the admin panel.'
+              : 'Your account does not have sudo privileges.'}
           </p>
         </div>
-        
-        {/* Progress indicator */}
-        <div className="flex justify-center space-x-2">
-          {[1, 2, 3, 4].map((step) => (
-            <div
-              key={step}
-              className={`w-3 h-3 rounded-full ${
-                step <= currentStep ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            />
-          ))}
-        </div>
-        
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+
+        {isSudo ? (
+          <div className="space-y-4">
+            <div className="rounded-xl bg-card/50 backdrop-blur-sm border border-border/40 p-5 space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                  <Key className="w-3 h-3" /> CBIS Private Key
+                </Label>
+                <Input
+                  type="password"
+                  value={cbisKey}
+                  onChange={e => setCbisKey(e.target.value)}
+                  placeholder="cbis_sec_..."
+                  className="h-10 rounded-lg font-mono text-xs"
+                  onKeyDown={e => e.key === 'Enter' && handleVerify()}
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
+                  <AlertTriangle className="w-3 h-3 shrink-0" /> {error}
+                </div>
+              )}
+
+              <Button className="w-full rounded-xl h-10 gap-2"
+                disabled={loading || !cbisKey.trim()}
+                onClick={handleVerify}>
+                {loading ? 'Verifying...' : 'Unlock Admin Panel'}
+                {!loading && <Lock className="w-4 h-4" />}
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground/60 text-center">
+              Generate a CBIS key in Account Settings → Security.
+            </p>
+          </div>
+        ) : (
+          <div className="text-center space-y-4">
+            <div className="rounded-xl bg-amber-500/5 border border-amber-500/10 p-4">
+              <p className="text-sm text-amber-400/80">Only sudo accounts can access the admin panel.</p>
+              <p className="text-xs text-muted-foreground/60 mt-2">
+                The first account registered during setup is automatically the sudo user.
+              </p>
+            </div>
+            <Button variant="outline" className="rounded-xl" onClick={() => navigate('/dashboard')}>
+              Back to Dashboard
+            </Button>
+          </div>
         )}
-        
-        {renderStep()}
       </div>
     </div>
-  );
-};
-
-export default AdminAuth;
+  )
+}

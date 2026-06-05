@@ -64,14 +64,32 @@ install_system_deps() {
       brew install node postgresql@16 redis git
       ;;
     windows)
-      print_step "Installing Node.js..."
-      winget install OpenJS.NodeJS.LTS --silent --accept-package-agreements 2>/dev/null && print_ok "Node.js installed" || print_skip "Install Node.js from https://nodejs.org"
-      print_step "Installing Git..."
-      winget install Git.Git --silent --accept-package-agreements 2>/dev/null && print_ok "Git installed" || print_skip "Install Git from https://git-scm.com"
-      print_step "Installing PostgreSQL..."
-      winget install PostgreSQL.PostgreSQL.16 --silent --accept-package-agreements 2>/dev/null && print_ok "PostgreSQL installed" || print_skip "Install PostgreSQL from https://postgresql.org/download/windows/"
-      print_step "Installing Redis..."
-      winget install Memurai.Memurai --silent --accept-package-agreements 2>/dev/null && print_ok "Redis (Memurai) installed" || print_skip "Install Redis from https://github.com/microsoftarchive/redis/releases"
+      # Helper: install via winget, then refresh PATH and verify the command works
+      win_install() {
+        local name="$1" winget_id="$2" cmd="$3" manual_url="$4"
+        print_step "Installing ${name}..."
+        if winget install "$winget_id" --silent --accept-package-agreements 2>/dev/null; then
+          # Refresh PATH from registry (Git Bash inherits Windows PATH)
+          export PATH="$PATH:$(reg query 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' /v Path 2>/dev/null | grep -oP 'Path\s+REG_(EXPAND_)?SZ\s+\K.*'):$(reg query 'HKCU\Environment' /v Path 2>/dev/null | grep -oP 'Path\s+REG_(EXPAND_)?SZ\s+\K.*')"
+          if command -v "$cmd" &>/dev/null; then
+            print_ok "$name installed and found in PATH"
+          else
+            print_skip "$name installed but not in PATH yet — may need to restart shell"
+          fi
+        else
+          print_skip "Install ${name} manually: ${manual_url}"
+        fi
+      }
+      check_cmd() { command -v "$1" &>/dev/null; }
+
+      check_cmd node && print_ok "Node.js found" || win_install "Node.js" OpenJS.NodeJS.LTS node https://nodejs.org
+      check_cmd git  && print_ok "Git found"    || win_install "Git"     Git.Git          git  https://git-scm.com
+      check_cmd psql && print_ok "PostgreSQL found" || win_install "PostgreSQL" PostgreSQL.PostgreSQL.16 psql https://postgresql.org/download/windows/
+      if redis-cli ping 2>/dev/null | grep -q PONG; then
+        print_ok "Redis found"
+      else
+        win_install "Redis (Memurai)" Memurai.Memurai redis-cli https://github.com/microsoftarchive/redis/releases
+      fi
       ;;
   esac
 }

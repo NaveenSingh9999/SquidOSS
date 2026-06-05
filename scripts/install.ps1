@@ -104,9 +104,15 @@ catch {
 }
 
 Step "Checking Redis..."
-try { $pong = redis-cli ping 2>$null; if ($pong -eq "PONG") { Ok("Redis found") } else { throw } }
-catch {
+$global:redisOk = $false
+try { $pong = redis-cli ping 2>$null; if ($pong -eq "PONG") { $global:redisOk = $true; Ok("Redis found") } else { throw } }
+catch { }
+if (-not $global:redisOk) {
   Install-Package "Redis (Memurai)" "Memurai.Memurai" "https://github.com/microsoftarchive/redis/releases"
+  Update-Path
+  try { $pong = redis-cli ping 2>$null; if ($pong -eq "PONG") { $global:redisOk = $true; Ok("Memurai/Redis found after install") } else { throw } } catch {
+    Warn("Install Redis from https://github.com/microsoftarchive/redis/releases and re-run")
+  }
 }
 
 # ── Clone repo ────────────────────────────────────────────────
