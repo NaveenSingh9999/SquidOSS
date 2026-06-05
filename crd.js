@@ -188,7 +188,11 @@ function pg(sql, opts = {}) {
   const platform = getPlatform()
   const methods = []
   if (os === 'termux') {
-    methods.push(() => execSync(`psql -d squidoss -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, stdio: 'ignore', timeout: 15000 }))
+    methods.push(
+      () => execSync(`psql -d squidoss -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, stdio: 'ignore', timeout: 15000 }),
+      () => execSync(`psql -d postgres -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, stdio: 'ignore', timeout: 15000 }),
+      () => execSync(`psql -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, stdio: 'ignore', timeout: 15000 }),
+    )
   }
   if (platform === 'windows') {
     methods.push(
@@ -206,7 +210,16 @@ function pg(sql, opts = {}) {
 }
 
 function pgFile(file) {
+  const os = getOS()
   const platform = getPlatform()
+  if (os === 'termux') {
+    const methods = [
+      () => execSync(`psql -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
+      () => execSync(`psql -d postgres -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
+    ]
+    for (const m of methods) { try { return m() } catch {} }
+    throw new Error('Could not run psql')
+  }
   if (platform === 'windows') {
     const methods = [
       () => execSync(`psql -U postgres -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
@@ -234,8 +247,12 @@ async function startPostgres() {
       catch { await run('pg_ctl start -D "C:\\Program Files\\PostgreSQL\\16\\data" 2>nul || pg_ctl start -D "%PGDATA%" 2>nul') }
       await new Promise(r => setTimeout(r, 3000))
     } else if (os === 'termux') {
-      await run('pg_ctl -D $PREFIX/var/lib/postgresql start 2>/dev/null || true')
-      await new Promise(r => setTimeout(r, 2000))
+      const pgDir = `${process.env.PREFIX || '/data/data/com.termux/files/usr'}/var/lib/postgresql`
+      if (!existsSync(`${pgDir}/PG_VERSION`)) {
+        await run(`initdb -D "${pgDir}" 2>/dev/null || pg_ctl initdb -D "${pgDir}" 2>/dev/null || true`)
+      }
+      await run(`pg_ctl -D "${pgDir}" start -l "${pgDir}/logfile" 2>/dev/null || true`)
+      await new Promise(r => setTimeout(r, 3000))
     } else {
       await run('sudo service postgresql start 2>/dev/null || sudo systemctl start postgresql 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || pg_ctl -D /var/lib/postgresql/data start 2>/dev/null || true')
       await new Promise(r => setTimeout(r, 3000))
