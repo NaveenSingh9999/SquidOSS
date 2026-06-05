@@ -403,7 +403,7 @@ async function buildNative() {
     if (outMtime > srcMtime) { log('Native module up to date'); return }
   }
   log('Building native C module...')
-  if (!existsSync(resolve(BACKEND, 'build'))) mkdirSync(resolve(BACKEND, 'build'), { recursive: true })
+  mkdirSync(nativeDir, { recursive: true })
   const nodeDir = dirname(process.execPath)
   const nodeInclude = resolve(nodeDir, '..', 'include')
   const cc = process.env.CC || process.platform === 'win32' ? 'cl.exe' : 'gcc'
