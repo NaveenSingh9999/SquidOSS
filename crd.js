@@ -54,7 +54,7 @@ function getOS() {
 
 async function sh(program, args, cwd = ROOT) {
   return new Promise(r => {
-    const c = spawn(program, args, { cwd, stdio: 'inherit', shell: true })
+    const c = spawn(program, args, { cwd, stdio: 'inherit' })
     c.on('close', code => r(code ?? 0))
     c.on('error', () => r(1))
   })
@@ -62,7 +62,7 @@ async function sh(program, args, cwd = ROOT) {
 
 async function run(cmd, cwd = ROOT) {
   return new Promise(r => {
-    const c = spawn('sh', ['-c', cmd], { cwd, stdio: 'inherit', shell: true })
+    const c = spawn('sh', ['-c', cmd], { cwd, stdio: 'inherit' })
     c.on('close', code => r(code ?? 0))
     c.on('error', () => r(1))
   })
