@@ -191,7 +191,7 @@ export default function Dashboard() {
     const Icon = getIcon(file.type)
     const isImage = file.type?.startsWith('image/')
     return (
-      <div className="group relative rounded-xl border border-border/30 bg-card/50 backdrop-blur-sm hover:bg-card/80 hover:border-primary/20 transition-all overflow-hidden">
+      <div className="group relative rounded-lg border border-border/20 bg-card/40 hover:bg-card/60 hover:border-primary/20 transition-all overflow-hidden">
         {isImage && file.storage_path ? (
           <div className="h-32 bg-muted/30 overflow-hidden">
             <img src={`${API_URL}/files/${file.id}/download`} alt={file.name}
@@ -199,7 +199,7 @@ export default function Dashboard() {
               onError={e => { (e.target as HTMLElement).style.display = 'none' }} />
           </div>
         ) : (
-          <div className="h-32 flex items-center justify-center bg-gradient-to-b from-accent/10 to-accent/5">
+          <div className="h-32 flex items-center justify-center bg-accent/10">
             <Icon className="w-12 h-12 text-muted-foreground/40" />
           </div>
         )}
@@ -207,7 +207,7 @@ export default function Dashboard() {
           <p className="text-sm truncate font-medium" title={file.name}>{file.name}</p>
           <p className="text-[10px] text-muted-foreground">{fmtBytes(file.size)}</p>
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2 gap-1">
+        <div className="absolute inset-0 bg-background/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2 gap-1">
           {inTrash ? (
             <>
               <button onClick={() => handleRestore(file)} className="p-1.5 rounded-md bg-background/80 hover:bg-background text-xs">Restore</button>
@@ -229,17 +229,25 @@ export default function Dashboard() {
   return (
     <div className="h-screen flex bg-background overflow-hidden">
       {/* Sidebar */}
-      <aside className={`${sidebarW} border-r border-border/20 bg-card/30 backdrop-blur-xl flex flex-col transition-all duration-200 shrink-0`}>
+      <aside className={`${sidebarW} border-r border-border/20 bg-card/30 flex flex-col transition-all duration-200 shrink-0`}>
         <div className="flex items-center h-12 px-3 border-b border-border/10">
-          <div className={`flex items-center gap-2 ${sidebarCollapsed && 'justify-center w-full'}`}>
-            <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-xs font-bold text-primary">S</span>
-            </div>
-            {!sidebarCollapsed && <span className="text-sm font-semibold">SquidOSS</span>}
-          </div>
-          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className={`p-1 text-muted-foreground hover:text-foreground ${sidebarCollapsed ? 'ml-0' : 'ml-auto'}`}>
-            {sidebarCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-          </button>
+          {sidebarCollapsed ? (
+            <button onClick={() => setSidebarCollapsed(false)} className="mx-auto p-1 text-muted-foreground hover:text-foreground">
+              <PanelLeft className="w-4 h-4" />
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-primary">S</span>
+                </div>
+                <span className="text-sm font-semibold truncate">SquidOSS</span>
+              </div>
+              <button onClick={() => setSidebarCollapsed(true)} className="ml-auto p-1 text-muted-foreground hover:text-foreground shrink-0">
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
 
         <nav className="flex-1 p-2 space-y-1">
@@ -260,7 +268,7 @@ export default function Dashboard() {
         <div className="p-2 border-t border-border/10 space-y-1">
           {isSudo && (
             <button onClick={() => navigate('/admin/dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-amber-400 hover:bg-amber-500/10 transition-all ${sidebarCollapsed && 'justify-center px-0'}`}>
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all ${sidebarCollapsed && 'justify-center px-0'}`}>
               <Shield className="w-4 h-4 shrink-0" /> {!sidebarCollapsed && 'Admin'}
             </button>
           )}
@@ -278,7 +286,7 @@ export default function Dashboard() {
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="flex items-center gap-3 h-12 px-4 border-b border-border/20 bg-background/80 backdrop-blur-xl shrink-0">
+        <header className="flex items-center gap-3 h-12 px-4 border-b border-border/20 bg-background shrink-0">
           <Breadcrumbs />
           <div className="ml-auto flex items-center gap-2">
             <div className="relative">
@@ -288,7 +296,7 @@ export default function Dashboard() {
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 h-8 w-48 rounded-lg bg-accent/20 border border-border/20 text-xs focus:outline-none focus:border-primary/30"
+                className="pl-8 pr-3 h-8 w-48 rounded-lg bg-accent/10 border border-border/20 text-xs focus:outline-none focus:border-primary/30"
               />
             </div>
             <button onClick={() => setViewMode(v => v === 'grid' ? 'list' : 'grid')}
@@ -313,8 +321,8 @@ export default function Dashboard() {
             </div>
           ) : activeTab === 'files' && filtered.length === 0 && folders.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
-                <Upload className="w-10 h-10 text-primary/40" />
+              <div className="w-16 h-16 rounded-xl bg-accent/10 flex items-center justify-center">
+                <Upload className="w-8 h-8 text-muted-foreground/40" />
               </div>
               <div>
                 <p className="text-lg font-medium">No files yet</p>
@@ -340,7 +348,7 @@ export default function Dashboard() {
                     : 'space-y-1'}>
                     {folders.map(f => (
                       <button key={f.id} onClick={() => goTo(f.path)}
-                        className={`flex items-center gap-3 rounded-xl border border-border/20 bg-card/30 hover:bg-card/60 hover:border-primary/20 transition-all ${
+                        className={`flex items-center gap-3 rounded-lg border border-border/20 bg-card/20 hover:bg-card/40 hover:border-primary/20 transition-all ${
                           viewMode === 'grid' ? 'p-4 flex-col text-center' : 'p-3 text-left'
                         }`}>
                         <Folder className={`${viewMode === 'grid' ? 'w-10 h-10' : 'w-5 h-5'} text-primary/60`} />
@@ -369,7 +377,7 @@ export default function Dashboard() {
                         const Icon = getIcon(f.type)
                         return (
                           <div key={f.id}
-                            className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-border/10 bg-card/20 hover:bg-card/40 transition-all group">
+                            className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border/10 bg-card/10 hover:bg-card/30 transition-all group">
                             <Icon className="w-5 h-5 text-muted-foreground/50 shrink-0" />
                             <p className="flex-1 text-sm truncate">{f.name}</p>
                             <p className="text-xs text-muted-foreground">{fmtBytes(f.size)}</p>
