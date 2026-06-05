@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
@@ -391,6 +391,43 @@ async function migrate() {
   log('Migration complete')
 }
 
+// ── Build Native Module ──────────────────────────────────────
+async function buildNative() {
+  const nativeDir = resolve(BACKEND, 'build/Release')
+  const nativeFile = resolve(nativeDir, 'local_storage.node')
+  const sourceFile = resolve(BACKEND, 'src/native/local_storage.c')
+  if (!existsSync(sourceFile)) { log('No C module source found, skipping native build'); return }
+  if (existsSync(nativeFile)) {
+    const srcMtime = statSync(sourceFile).mtimeMs
+    const outMtime = statSync(nativeFile).mtimeMs
+    if (outMtime > srcMtime) { log('Native module up to date'); return }
+  }
+  log('Building native C module...')
+  if (!existsSync(resolve(BACKEND, 'build'))) mkdirSync(resolve(BACKEND, 'build'), { recursive: true })
+  const nodeInclude = resolve(process.execPath, '..', 'include')
+  const cc = process.env.CC || process.platform === 'win32' ? 'cl.exe' : 'gcc'
+  const outFlag = process.platform === 'win32' ? '/Fe:' : '-o '
+  const incFlag = process.platform === 'win32' ? '/I' : '-I'
+  const compileFlags = process.platform === 'win32'
+    ? `${incFlag}"${nodeInclude}" /LD /nologo`
+    : `-fPIC -shared ${incFlag}"${nodeInclude}" -I"${nodeInclude}/node"`
+  const src = `"${sourceFile}"`
+  const out = `"${nativeFile}"`
+  const ext = process.platform === 'win32' ? '.obj' : '.o'
+  const obj = `"${resolve(BACKEND, 'build', 'local_storage' + ext)}"`
+  try {
+    if (process.platform === 'win32') {
+      await run(`${cc} ${compileFlags} ${src} ${outFlag}${out}`, BACKEND)
+    } else {
+      await run(`${cc} ${compileFlags} ${src} -o ${out}`, BACKEND)
+    }
+    if (existsSync(nativeFile)) log(`  ✓ local_storage.node (${(statSync(nativeFile).size / 1024).toFixed(1)} KB)`)
+    else { warn('  ✗ native build output not found'); return }
+  } catch (e) {
+    warn(`  ✗ gcc not available — using JS fallback (${e.message})`)
+  }
+}
+
 // ── Build ────────────────────────────────────────────────────
 async function build() {
   log('Building SquidOSS...')
@@ -407,6 +444,7 @@ async function build() {
   }
 
   await migrate()
+  await buildNative()
   log('Build complete')
 }
 
@@ -414,6 +452,7 @@ async function build() {
 async function start() {
   if (!existsSync(ENV_FILE)) await configure()
   if (!existsSync(resolve(BACKEND, 'node_modules'))) { warn('Run ./crd build first'); return }
+  await buildNative()
 
   if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true })
 

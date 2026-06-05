@@ -1,16 +1,32 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, copyFileSync, renameSync, truncateSync, statSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 const CHUNKS_DIR = resolve(process.cwd(), 'data', 'chunks')
+const BACKEND_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
 let native: any = null
-try {
-  native = require('../build/Release/local_storage.node')
-} catch {
+const nativePath = resolve(BACKEND_DIR, 'build', 'Release', 'local_storage.node')
+if (!existsSync(nativePath)) {
+  const sourcePath = resolve(BACKEND_DIR, 'src', 'native', 'local_storage.c')
+  if (existsSync(sourcePath)) {
+    try {
+      const env = { ...process.env }
+      const r = spawnSync('npm', ['run', 'build:native'], { cwd: BACKEND_DIR, stdio: 'pipe', env, timeout: 30000 })
+      if (r.status === 0 && existsSync(nativePath)) native = require(nativePath)
+    } catch {}
+  }
+}
+if (!native) {
   try {
-    native = require('local_storage')
-  } catch {}
+    native = require(nativePath)
+  } catch {
+    try {
+      native = require('local_storage')
+    } catch {}
+  }
 }
 
 export function ensureChunksDir(userId: string): string {
