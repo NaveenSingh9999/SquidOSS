@@ -201,11 +201,20 @@ function pg(sql, opts = {}) {
     )
   }
   methods.push(
-    () => execSync(`sudo -u postgres psql -c "${sql.replace(/"/g, '\\"')}" 2>/dev/null`, { ...opts, stdio: 'ignore', timeout: 15000 }),
-    () => execSync(`psql -h localhost -U postgres -c "${sql.replace(/"/g, '\\"')}" 2>/dev/null`, { ...opts, stdio: 'ignore', timeout: 15000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
-    () => execSync(`psql -c "${sql.replace(/"/g, '\\"')}" 2>/dev/null`, { ...opts, stdio: 'ignore', timeout: 15000 }),
+    // 1. TCP with password (no sudo, works if pg_hba.conf allows md5/scram)
+    () => execSync(`psql -h localhost -U postgres -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, timeout: 15000, env: { ...process.env, PGPASSWORD: 'postgres' } }),
+    // 2. Peer auth as current OS user (works if matching PG role exists)
+    () => execSync(`psql -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, timeout: 15000 }),
+    // 3. Sudo to postgres user + peer auth (works if PG running, `sudo` available)
+    () => execSync(`sudo -u postgres psql -c "${sql.replace(/"/g, '\\"')}"`, { ...opts, timeout: 15000 }),
   )
-  for (const m of methods) { try { return m() } catch {} }
+  for (const m of methods) {
+    try { return m() }
+    catch (e) {
+      const msg = e.stderr?.toString().trim() || e.message || ''
+      if (msg) log(`pg attempt failed: ${msg.split('\n')[0]}`)
+    }
+  }
   throw new Error('Could not run psql — is PostgreSQL installed?')
 }
 
@@ -229,9 +238,12 @@ function pgFile(file) {
     throw new Error('Could not run psql migration')
   }
   const methods = [
-    () => execSync(`sudo -u postgres psql -d squidoss -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
-    () => execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d squidoss -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
-    () => execSync(`psql -d squidoss -f "${file}" 2>/dev/null`, { stdio: 'inherit', timeout: 180000 }),
+    // 1. TCP with password (no sudo)
+    () => execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
+    // 2. Peer auth as current user
+    () => execSync(`psql -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
+    // 3. Sudo to postgres user
+    () => execSync(`sudo -u postgres psql -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
   ]
   for (const m of methods) { try { return m() } catch {} }
   throw new Error('Could not run psql')
@@ -242,7 +254,6 @@ async function startPostgres() {
   const os = getOS()
   try {
     if (platform === 'windows') {
-      // Try service first, then pg_ctl
       try { await run('net start postgresql-x64-16 2>nul || net start postgresql-x64-15 2>nul || net start postgresql 2>nul') }
       catch { await run('pg_ctl start -D "C:\\Program Files\\PostgreSQL\\16\\data" 2>nul || pg_ctl start -D "%PGDATA%" 2>nul') }
       await new Promise(r => setTimeout(r, 3000))
@@ -254,7 +265,8 @@ async function startPostgres() {
       await run(`pg_ctl -D "${pgDir}" start -l "${pgDir}/logfile" 2>/dev/null || true`)
       await new Promise(r => setTimeout(r, 3000))
     } else {
-      await run('sudo service postgresql start 2>/dev/null || sudo systemctl start postgresql 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || pg_ctl -D /var/lib/postgresql/data start 2>/dev/null || true')
+      log('Starting PostgreSQL...')
+      await run('sudo service postgresql start 2>/dev/null || sudo pg_ctlcluster 16 main start 2>/dev/null || sudo pg_ctlcluster 15 main start 2>/dev/null || sudo pg_ctlcluster 14 main start 2>/dev/null || true')
       await new Promise(r => setTimeout(r, 3000))
     }
   } catch {}
