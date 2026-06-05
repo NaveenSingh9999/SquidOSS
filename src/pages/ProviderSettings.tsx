@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
+import StorageDeviceWizard from '@/components/StorageDeviceWizard'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -256,89 +257,17 @@ export default function ProviderSettings() {
       </header>
 
       <div className="max-w-3xl mx-auto p-4 lg:p-6 space-y-4">
-        {/* Local Disk Provider */}
+        {/* Local Storage — device detection */}
         <Card className="border-border/30">
           <CardHeader className="px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <HardDrive className="w-4 h-4 text-primary" />
-                <CardTitle className="text-sm">Local Disk</CardTitle>
-              </div>
-              <div className="flex items-center gap-2">
-                {localDisk && (
-                  <>
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatBytes(localDisk.totalBytes)} used · {localDisk.chunkCount} chunks
-                    </span>
-                    <button onClick={toggleLocalDisk}
-                      className={cn(
-                        'px-2 py-1 text-[9px] rounded border transition-colors',
-                        localDisk.enabled
-                          ? 'border-emerald-500/50 text-emerald-400 bg-emerald-500/10'
-                          : 'border-border/40 text-muted-foreground',
-                      )}>
-                      {localDisk.enabled ? 'Active' : 'Disabled'}
-                    </button>
-                  </>
-                )}
-                <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7"
-                  onClick={() => { setShowLocalConfig(true); setLocalForm({
-                    path: localDisk?.path || './data/chunks',
-                    partitionSize: String(localDisk?.partitionSize || 0),
-                  })}}>
-                  <Settings2 className="w-3 h-3" /> Configure
-                </Button>
-              </div>
+            <div className="flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm">Local Storage</CardTitle>
+              <span className="text-[9px] text-muted-foreground ml-auto">Auto-detects disks & partitions</span>
             </div>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] text-muted-foreground">
-                Path: <code className="text-[9px] bg-accent/50 px-1 py-0.5 rounded">{localDisk?.path || './data/chunks'}</code>
-                {localDisk?.partitionSize ? ` · ${localDisk.partitionSize}GB partition` : ' · No limit'}
-              </p>
-              {localDisk && localDisk.chunkCount > 0 && (
-                <button onClick={wipeLocalChunks}
-                  className="text-[9px] text-red-400 hover:text-red-300 transition-colors flex items-center gap-1">
-                  <Trash2 className="w-2.5 h-2.5" /> Wipe chunks
-                </button>
-              )}
-            </div>
-
-            {/* Local config form */}
-            {showLocalConfig && (
-              <div className="mt-3 p-3 rounded-lg bg-accent/20 border border-border/30 space-y-3">
-                <div>
-                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Storage Path</label>
-                  <Input
-                    type="text"
-                    value={localForm.path}
-                    onChange={e => setLocalForm(prev => ({ ...prev, path: e.target.value }))}
-                    className="h-8 text-xs rounded-lg"
-                    placeholder="./data/chunks"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Max Partition (GB, 0 = unlimited)</label>
-                  <Input
-                    type="number"
-                    value={localForm.partitionSize}
-                    onChange={e => setLocalForm(prev => ({ ...prev, partitionSize: e.target.value }))}
-                    className="h-8 text-xs rounded-lg"
-                    placeholder="0"
-                    min="0"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" className="text-xs h-7 gap-1.5" onClick={saveLocalConfig} disabled={saving}>
-                    {saving ? 'Saving...' : 'Save'}
-                  </Button>
-                  <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowLocalConfig(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
+            <StorageDeviceWizard onConfigured={() => {}} compact />
           </CardContent>
         </Card>
 

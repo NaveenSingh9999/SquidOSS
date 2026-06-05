@@ -343,49 +343,22 @@ async function setupDatabase() {
 }
 
 async function migrate() {
-  const MIGRATIONS_DIR = resolve(BACKEND, 'migrations')
-  if (!existsSync(MIGRATIONS_DIR)) { log('No migrations directory found'); return }
   await startPostgres()
   await setupDatabase()
 
-  const sqlFiles = readdirSync(MIGRATIONS_DIR)
-    .filter(f => f.endsWith('.sql'))
-    .sort()
+  const tsx = resolve(BACKEND, 'node_modules/.bin/tsx')
+  if (!existsSync(tsx)) { warn('tsx not found — run npm install in backend first'); return }
 
-  if (sqlFiles.length === 0) { log('No migration files found'); return }
-
-  log(`Running ${sqlFiles.length} migration(s)...`)
-
-  // Drop tables created by init to avoid conflicts (only on first migration)
-  const firstFile = sqlFiles[0]
-  if (firstFile.startsWith('001_')) {
-    const dropTables = [
-      'DROP TABLE IF EXISTS public.files CASCADE',
-      'DROP TABLE IF EXISTS public.folders CASCADE',
-      'DROP TABLE IF EXISTS public.workspaces CASCADE',
-      'DROP TABLE IF EXISTS public.github_repos CASCADE',
-      'DROP TABLE IF EXISTS public.app_settings CASCADE',
-      'DROP TABLE IF EXISTS public.profiles CASCADE',
-      'DROP TABLE IF EXISTS auth.users CASCADE',
-      'DROP SCHEMA IF EXISTS auth CASCADE',
-      'DROP SCHEMA IF EXISTS extensions CASCADE',
-    ]
-    for (const stmt of dropTables) {
-      try { pg(stmt) } catch {}
-    }
-  }
-
-  for (const file of sqlFiles) {
-    const filePath = resolve(MIGRATIONS_DIR, file)
-    try {
-      pgFile(filePath)
-      log(`  ✓ ${file}`)
-    } catch (e) {
-      if (file !== firstFile) {
-        warn(`  ⚠ ${file}: ${e.message}`)
-      } else {
-        warn(`  ✗ ${file}: ${e.message}`)
-      }
+  log('Running database migrations...')
+  try {
+    const r = execSync(`"${tsx}" "${resolve(BACKEND, 'src/db/migrate.ts')}"`, { cwd: BACKEND, encoding: 'utf-8', stdio: 'pipe', timeout: 120000 })
+    log(r.trim().split('\n').filter(l => l.trim()).join('\n'))
+  } catch (e) {
+    const msg = e.stderr?.toString().trim() || e.message
+    if (msg.includes('already exists') || msg.includes('duplicate key')) {
+      log('  Some tables already exist — continuing')
+    } else {
+      warn(`  Migration error: ${msg.split('\n')[0]}`)
     }
   }
   log('Migration complete')

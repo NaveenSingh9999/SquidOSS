@@ -12,6 +12,7 @@ import keyRoutes from './routes/keys.js'
 import trashRoutes from './routes/trash.js'
 import shareRoutes from './routes/shares.js'
 import storageProviderRoutes from './routes/storage-providers.js'
+import storageDeviceRoutes from './routes/storage-devices.js'
 import videoRoutes from './routes/video.js'
 import queryRoutes from './routes/query.js'
 import rpcRoutes from './routes/rpc.js'
@@ -77,6 +78,7 @@ export async function buildApp() {
   await app.register(keyRoutes, { prefix: '/api/v1' })
   await app.register(trashRoutes)
   await app.register(storageProviderRoutes)
+  await app.register(storageDeviceRoutes)
   await app.register(videoRoutes)
   await app.register(queryRoutes)
   await app.register(rpcRoutes)
