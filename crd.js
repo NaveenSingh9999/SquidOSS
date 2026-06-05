@@ -211,8 +211,10 @@ function pg(sql, opts = {}) {
   for (const m of methods) {
     try { return m() }
     catch (e) {
-      const msg = e.stderr?.toString().trim() || e.message || ''
-      if (msg) log(`pg attempt failed: ${msg.split('\n')[0]}`)
+      const msg = (e.stderr?.toString().trim() || e.message || '').split('\n')[0]
+      if (msg) log(`pg attempt: ${msg}`)
+      // If psql connected but SQL failed (ERROR:), re-throw immediately
+      if (msg.startsWith('ERROR:')) throw e
     }
   }
   throw new Error('Could not run psql — is PostgreSQL installed?')
@@ -240,12 +242,19 @@ function pgFile(file) {
   const methods = [
     // 1. TCP with password (no sudo)
     () => execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
-    // 2. Peer auth as current user
-    () => execSync(`psql -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
+    // 2. Peer auth as postgres via Unix socket
+    () => execSync(`psql -U postgres -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
     // 3. Sudo to postgres user
     () => execSync(`sudo -u postgres psql -d squidoss -f "${file}"`, { stdio: 'inherit', timeout: 180000 }),
   ]
-  for (const m of methods) { try { return m() } catch {} }
+  for (const m of methods) {
+    try { return m() }
+    catch (e) {
+      const msg = (e.stderr?.toString().trim() || e.message || '').split('\n')[0]
+      if (msg) log(`pgFile attempt: ${msg}`)
+      if (msg.startsWith('ERROR:')) throw e
+    }
+  }
   throw new Error('Could not run psql')
 }
 
@@ -304,15 +313,14 @@ async function setupDatabase() {
         for (const cmd of [
           `sed -i 's/local\\s\\+all\\s\\+all\\s\\+peer/local   all             all                                     trust/' "${hba}"`,
           `sed -i 's/host\\s\\+all\\s\\+all\\s\\+127.0.0.1\\/32\\s\\+scram-sha-256/host    all             all             127.0.0.1\\/32            trust/' "${hba}"`,
+          `sed -i 's/host\\s\\+all\\s\\+all\\s\\+::1\\/128\\s\\+scram-sha-256/host    all             all             ::1\\/128                 trust/' "${hba}"`,
         ]) {
-          // Try with sudo first (required on Codespaces/containers), fall back to direct
           const sudoCmd = `sudo sh -c "${cmd.replace(/"/g, '\\"')}"`
           try { execSync(sudoCmd, { stdio: 'pipe' }); log('pg_hba trust set via sudo') } catch (e) {
             try { execSync(cmd, { stdio: 'pipe' }); log('pg_hba trust set directly') } catch {}
           }
         }
-        // Reload PostgreSQL config
-        try { execSync('sudo pg_ctlcluster * main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null || pg_ctl reload 2>/dev/null || true', { stdio: 'pipe' }) } catch {}
+        try { execSync('sudo pg_ctlcluster 16 main reload 2>/dev/null || sudo pg_ctlcluster 14 main reload 2>/dev/null || sudo service postgresql reload 2>/dev/null || true', { stdio: 'pipe' }) } catch {}
         await new Promise(r => setTimeout(r, 2000))
       } else {
         log('pg_hba.conf not found, skipping trust setup')
@@ -326,7 +334,11 @@ async function setupDatabase() {
     pg(`CREATE DATABASE squidoss`)
   } else {
     pg(`ALTER USER postgres PASSWORD 'postgres'`)
-    pg(`CREATE DATABASE squidoss OWNER postgres`)
+    try { pg(`CREATE DATABASE squidoss OWNER postgres`) } catch (e) {
+      const msg = (e.stderr?.toString().trim() || e.message || '')
+      if (msg.includes('already exists')) log('Database already exists')
+      else throw e
+    }
   }
 }
 
