@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import {
   Search, Upload, Folder, File, Trash2, Home, ChevronRight,
   Download, Settings, RefreshCw, LogOut, PanelLeft, PanelLeftClose,
-  Image, Video, Music, FileText, Archive, Shield,
+  Image, Video, Music, FileText, Archive, Shield, Plus, X,
 } from '@/lib/icon-map'
 
 const API_URL = (() => {
@@ -64,8 +64,15 @@ export default function Dashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([])
   const [showUpload, setShowUpload] = useState(false)
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [fullSearch, setFullSearch] = useState('')
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searching, setSearching] = useState(false)
   const [isSudo, setIsSudo] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const uploadMenuRef = useRef<HTMLDivElement>(null)
 
   const token = () => localStorage.getItem('squidoss_token')
   const h = () => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) })
@@ -164,6 +171,82 @@ export default function Dashboard() {
       URL.revokeObjectURL(url)
     } catch { toast({ title: 'Download failed', variant: 'destructive' }) }
   }
+
+  const handleCreateFolder = async () => {
+    const name = prompt('Folder name:')
+    if (!name?.trim()) return
+    try {
+      const r = await fetch(`${API_URL}/api/v1/folders`, {
+        method: 'POST', headers: h(),
+        body: JSON.stringify({ name: name.trim(), parent_folder: currentFolder || null }),
+      })
+      if (r.ok) { toast({ title: 'Folder created' }); fetchFiles() }
+      else { const e = await r.json(); toast({ title: 'Error', description: e.error, variant: 'destructive' }) }
+    } catch { toast({ title: 'Error', variant: 'destructive' }) }
+    setUploadMenuOpen(false)
+  }
+
+  const handleCreateFile = async () => {
+    const name = prompt('File name:')
+    if (!name?.trim()) return
+    try {
+      const blob = new Blob([''], { type: 'text/plain' })
+      const fd = new FormData()
+      fd.append('file', blob, name.trim())
+      fd.append('parent_folder', currentFolder)
+      const r = await fetch(`${API_URL}/files/upload`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
+      })
+      if (r.ok) { toast({ title: 'File created' }); fetchFiles() }
+      else { const e = await r.json(); toast({ title: 'Error', description: e.error, variant: 'destructive' }) }
+    } catch { toast({ title: 'Error', variant: 'destructive' }) }
+    setUploadMenuOpen(false)
+  }
+
+  const runFullSearch = useCallback(async (q: string) => {
+    if (!q.trim()) { setSearchResults([]); return }
+    setSearching(true)
+    try {
+      const res = await fetch(`${API_URL}/api/v1/query/files?select=*&filter=is_deleted.false,like.name.${encodeURIComponent(`%${q}%`)}&limit=20`, { headers: h() })
+      const data = await res.json()
+      const results = Array.isArray(data) ? data : data?.data || []
+      setSearchResults(results)
+    } catch {}
+    setSearching(false)
+  }, [])
+
+  const debounceRef = useRef<any>(null)
+  const onFullSearchChange = (q: string) => {
+    setFullSearch(q)
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => runFullSearch(q), 300)
+  }
+
+  const openFullSearch = () => {
+    setSearchOpen(true)
+    setTimeout(() => searchInputRef.current?.focus(), 100)
+  }
+
+  // Close upload menu on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target as Node)) {
+        setUploadMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  // Close search on Escape
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSearchOpen(false)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(true) }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [])
 
   const Breadcrumbs = () => {
     if (!currentFolder) return null
@@ -288,26 +371,95 @@ export default function Dashboard() {
         {/* Top bar */}
         <header className="flex items-center gap-3 h-12 px-4 border-b border-border/20 bg-background shrink-0">
           <Breadcrumbs />
-          <div className="ml-auto flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 h-8 w-48 rounded-lg bg-accent/10 border border-border/20 text-xs focus:outline-none focus:border-primary/30"
-              />
+
+          {/* Full search overlay */}
+          {searchOpen && (
+            <div className="fixed inset-0 z-50 bg-background/80" onClick={() => setSearchOpen(false)}>
+              <div className="max-w-xl mx-auto mt-24 p-4" onClick={e => e.stopPropagation()}>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search files, folders, settings..."
+                    value={fullSearch}
+                    onChange={e => onFullSearchChange(e.target.value)}
+                    className="w-full pl-10 pr-10 h-12 rounded-xl border border-border/30 bg-background text-sm focus:outline-none focus:border-primary/30 shadow-lg"
+                    autoFocus
+                  />
+                  <button onClick={() => setSearchOpen(false)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {searching && (
+                  <div className="mt-2 text-xs text-muted-foreground text-center">Searching...</div>
+                )}
+
+                {!searching && searchResults.length > 0 && (
+                  <div className="mt-2 rounded-xl border border-border/20 bg-background shadow-lg overflow-hidden max-h-80 overflow-y-auto">
+                    <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border/10">Files</div>
+                    {searchResults.map(f => {
+                      const Icon = getIcon(f.type)
+                      return (
+                        <button key={f.id} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent/20 text-left transition-colors"
+                          onClick={() => { setSearchOpen(false); setCurrentFolder(f.parent_folder || '') }}>
+                          <Icon className="w-4 h-4 text-muted-foreground/60 shrink-0" />
+                          <span className="text-sm truncate">{f.name}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {!searching && fullSearch && searchResults.length === 0 && (
+                  <div className="mt-2 text-xs text-muted-foreground text-center">No results</div>
+                )}
+
+                {!fullSearch && (
+                  <div className="mt-4 text-xs text-muted-foreground text-center space-y-1">
+                    <p>Search across files and folders</p>
+                    <p className="text-[10px] text-muted-foreground/60">Press Esc to close</p>
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={openFullSearch}
+              className="flex items-center gap-2 px-3 h-8 rounded-lg bg-accent/10 border border-border/20 text-xs text-muted-foreground hover:text-foreground hover:border-border/40 transition-all">
+              <Search className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Search...</span>
+              <kbd className="hidden sm:inline text-[10px] text-muted-foreground/40 border border-border/20 rounded px-1">⌘K</kbd>
+            </button>
             <button onClick={() => setViewMode(v => v === 'grid' ? 'list' : 'grid')}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50">
+              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50">
               {viewMode === 'grid' ? '☰' : '⊞'}
             </button>
-            <Button size="sm" className="text-xs h-8 gap-1.5 rounded-lg" onClick={handleUpload}>
-              <Upload className="w-3.5 h-3.5" /> Upload
-            </Button>
+            <div className="relative" ref={uploadMenuRef}>
+              <Button size="sm" className="text-xs h-8 gap-1.5 rounded-lg" onClick={() => setUploadMenuOpen(!uploadMenuOpen)}>
+                <Plus className="w-3.5 h-3.5" /> New
+              </Button>
+              {uploadMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border/20 bg-background shadow-lg z-40 overflow-hidden">
+                  <button onClick={handleUpload}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-accent/20 transition-colors text-left">
+                    <Upload className="w-4 h-4 text-muted-foreground" /> Upload Files
+                  </button>
+                  <button onClick={handleCreateFolder}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-accent/20 transition-colors text-left">
+                    <Folder className="w-4 h-4 text-muted-foreground" /> Create Folder
+                  </button>
+                  <button onClick={handleCreateFile}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-accent/20 transition-colors text-left">
+                    <File className="w-4 h-4 text-muted-foreground" /> Create File
+                  </button>
+                </div>
+              )}
+            </div>
             <input ref={uploadRef} type="file" multiple className="hidden" onChange={onFileSelect} />
-            <button onClick={fetchFiles} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50">
+            <button onClick={fetchFiles} className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>

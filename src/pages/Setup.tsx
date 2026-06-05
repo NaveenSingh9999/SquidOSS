@@ -151,14 +151,14 @@ export default function Setup() {
             </div>
 
             <Card className="p-4 space-y-4">
-              {['local', 's3', 'webdav'].map(p => (
+              {['local', 'github', 's3', 'webdav'].map(p => (
                 <label key={p} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                   storageProvider === p ? 'border-primary/30 bg-primary/5' : 'border-border/20 hover:bg-accent/30'
                 }`}>
                   <input type="radio" name="provider" value={p}
                     checked={storageProvider === p} onChange={e => setStorageProvider(e.target.value)}
                     className="accent-primary" />
-                  <span className="text-sm capitalize">{p === 's3' ? 'S3 Compatible' : p === 'webdav' ? 'WebDAV' : 'Local Disk'}</span>
+                  <span className="text-sm capitalize">{p === 's3' ? 'S3 Compatible' : p === 'webdav' ? 'WebDAV' : p === 'github' ? 'GitHub' : 'Local Disk'}</span>
                 </label>
               ))}
             </Card>

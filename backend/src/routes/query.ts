@@ -62,24 +62,24 @@ export default async function queryRoutes(app: FastifyInstance) {
     const { conditions, params } = parseFilters(request.query as any)
     const selectCols = (request.query as any).select || '*'
 
-    let query = sql(`SELECT ${selectCols} FROM ${table}`)
+    let sqlStr = `SELECT ${selectCols} FROM ${table}`
     if (conditions.length > 0) {
-      query = query` WHERE ${sql.unsafe(conditions.join(' AND '))}`
+      sqlStr += ` WHERE ${conditions.join(' AND ')}`
     }
 
     const order = (request.query as any).order
     if (order) {
       const [col, dir] = order.split('.')
-      query = query` ORDER BY ${sql.unsafe(col)} ${sql.unsafe(dir === 'desc' ? 'DESC' : 'ASC')}`
+      sqlStr += ` ORDER BY ${col} ${dir === 'desc' ? 'DESC' : 'ASC'}`
     }
 
     const limit = parseInt((request.query as any).limit || '0')
-    if (limit > 0) query = query` LIMIT ${limit}`
+    if (limit > 0) sqlStr += ` LIMIT ${limit}`
 
     const offset = parseInt((request.query as any).offset || '0')
-    if (offset > 0) query = query` OFFSET ${offset}`
+    if (offset > 0) sqlStr += ` OFFSET ${offset}`
 
-    const result = await query
+    const result = await sql.unsafe(sqlStr, params)
     return result
   })
 
