@@ -65,41 +65,49 @@ class QueryBuilder {
   }
 
   eq(column: string, value: any) {
+    if (value === null || value === undefined) return this
     this.filters.push(`eq.${column}.${value}`)
     return this
   }
 
   neq(column: string, value: any) {
+    if (value === null || value === undefined) return this
     this.filters.push(`neq.${column}.${value}`)
     return this
   }
 
   gt(column: string, value: any) {
+    if (value === null || value === undefined) return this
     this.filters.push(`gt.${column}.${value}`)
     return this
   }
 
   lt(column: string, value: any) {
+    if (value === null || value === undefined) return this
     this.filters.push(`lt.${column}.${value}`)
     return this
   }
 
   gte(column: string, value: any) {
+    if (value === null || value === undefined) return this
     this.filters.push(`gte.${column}.${value}`)
     return this
   }
 
   lte(column: string, value: any) {
+    if (value === null || value === undefined) return this
     this.filters.push(`lte.${column}.${value}`)
     return this
   }
 
   is(column: string, value: any) {
+    if (value === null || value === undefined) return this
     this.filters.push(`is.${column}.${value}`)
     return this
   }
 
   in(column: string, values: any[]) {
+    if (!values || values.length === 0) return this
     this.filters.push(`in.${column}.${values.join(',')}`)
     return this
   }

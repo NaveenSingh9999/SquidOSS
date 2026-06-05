@@ -73,9 +73,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
   })
 
   // Setup status
-  fastify.get('/auth/setup-status', async () => {
-    const [row] = await sql`SELECT value FROM app_settings WHERE key = 'setup_complete' LIMIT 1`
-    return { setupComplete: row?.value === 'true' }
+  fastify.get('/auth/setup-status', async (request, reply) => {
+    try {
+      const [row] = await sql`SELECT value FROM app_settings WHERE key = 'setup_complete' LIMIT 1`
+      return { setupComplete: row?.value === 'true' }
+    } catch {
+      reply.status(200).send({ setupComplete: false })
+    }
   })
 
   // Change password

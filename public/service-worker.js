@@ -1,6 +1,6 @@
 
 
-const CACHE_NAME = 'squidcloud-v11.0.44-1780418345967'; // Dynamic cache name
+const CACHE_NAME = 'squidcloud-v11.0.45-1780659069747'; // Dynamic cache name
 const API_CACHE = 'api-cache-v2';
 const STATIC_CACHE = 'static-cache-v3';
 

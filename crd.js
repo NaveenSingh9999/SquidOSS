@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
@@ -343,33 +343,52 @@ async function setupDatabase() {
 }
 
 async function migrate() {
-  if (!existsSync(MIGRATION_FILE)) { log('No migration found'); return }
+  const MIGRATIONS_DIR = resolve(BACKEND, 'migrations')
+  if (!existsSync(MIGRATIONS_DIR)) { log('No migrations directory found'); return }
   await startPostgres()
   await setupDatabase()
 
-  log('Running full schema migration...')
-  // Drop tables created by init to avoid conflicts
-  const dropTables = [
-    'DROP TABLE IF EXISTS public.files CASCADE',
-    'DROP TABLE IF EXISTS public.folders CASCADE',
-    'DROP TABLE IF EXISTS public.workspaces CASCADE',
-    'DROP TABLE IF EXISTS public.github_repos CASCADE',
-    'DROP TABLE IF EXISTS public.app_settings CASCADE',
-    'DROP TABLE IF EXISTS public.profiles CASCADE',
-    'DROP TABLE IF EXISTS auth.users CASCADE',
-    'DROP SCHEMA IF EXISTS auth CASCADE',
-    'DROP SCHEMA IF EXISTS extensions CASCADE',
-  ]
-  for (const stmt of dropTables) {
-    try { pg(stmt) } catch {}
+  const sqlFiles = readdirSync(MIGRATIONS_DIR)
+    .filter(f => f.endsWith('.sql'))
+    .sort()
+
+  if (sqlFiles.length === 0) { log('No migration files found'); return }
+
+  log(`Running ${sqlFiles.length} migration(s)...`)
+
+  // Drop tables created by init to avoid conflicts (only on first migration)
+  const firstFile = sqlFiles[0]
+  if (firstFile.startsWith('001_')) {
+    const dropTables = [
+      'DROP TABLE IF EXISTS public.files CASCADE',
+      'DROP TABLE IF EXISTS public.folders CASCADE',
+      'DROP TABLE IF EXISTS public.workspaces CASCADE',
+      'DROP TABLE IF EXISTS public.github_repos CASCADE',
+      'DROP TABLE IF EXISTS public.app_settings CASCADE',
+      'DROP TABLE IF EXISTS public.profiles CASCADE',
+      'DROP TABLE IF EXISTS auth.users CASCADE',
+      'DROP SCHEMA IF EXISTS auth CASCADE',
+      'DROP SCHEMA IF EXISTS extensions CASCADE',
+    ]
+    for (const stmt of dropTables) {
+      try { pg(stmt) } catch {}
+    }
   }
 
-  try {
-    pgFile(MIGRATION_FILE)
-    log('Schema applied')
-  } catch (e) {
-    warn(`Migration error: ${e.message}`)
+  for (const file of sqlFiles) {
+    const filePath = resolve(MIGRATIONS_DIR, file)
+    try {
+      pgFile(filePath)
+      log(`  ✓ ${file}`)
+    } catch (e) {
+      if (file !== firstFile) {
+        warn(`  ⚠ ${file}: ${e.message}`)
+      } else {
+        warn(`  ✗ ${file}: ${e.message}`)
+      }
+    }
   }
+  log('Migration complete')
 }
 
 // ── Build ────────────────────────────────────────────────────

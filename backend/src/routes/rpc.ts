@@ -97,7 +97,7 @@ export default async function rpcRoutes(app: FastifyInstance) {
 
       update_profile: async (p) => {
         await sql`
-          UPDATE auth.users SET full_name = ${p.full_name || p.fullName}
+          UPDATE public.profiles SET full_name = ${p.full_name || p.fullName}
           WHERE id = ${userId}
         `
         return { success: true }

@@ -8,15 +8,10 @@ import { useToast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, User, Key, Shield, LogOut, Check, Copy,
-  AlertTriangle, X, Server, Database,
+  AlertTriangle, X, Server, Database, HardDrive, Folder,
+  Power, PowerOff, Settings2, Trash2, ExternalLink, RefreshCw,
 } from '@/lib/icon-map'
-
-const API_URL = (() => {
-  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev'))
-    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
-  return 'http://localhost:3000'
-})().replace(/\/+$/, '')
+import { API_URL } from '@/lib/api-url'
 
 export default function AccountSettings() {
   const navigate = useNavigate()
@@ -29,13 +24,121 @@ export default function AccountSettings() {
   const [cbisKeys, setCbisKeys] = useState<any[]>([])
   const [generatedKey, setGeneratedKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [localDisk, setLocalDisk] = useState<{
+    enabled: boolean; path: string; partitionSize: number;
+    chunkCount: number; totalBytes: number
+  } | null>(null)
+  const [providers, setProviders] = useState<any[]>([])
+  const [showLocalForm, setShowLocalForm] = useState(false)
+  const [localForm, setLocalForm] = useState({ path: './data/chunks', partitionSize: '0' })
+  const [localSaving, setLocalSaving] = useState(false)
 
   const token = () => localStorage.getItem('squidoss_token')
   const h = () => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) })
 
+  const fetchLocalDiskStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/res54-local/status`, { headers: h() })
+      const data = await res.json()
+      if (data.success) {
+        setLocalDisk({
+          enabled: data.enabled,
+          path: data.path || './data/chunks',
+          partitionSize: data.partitionSize || 0,
+          chunkCount: data.chunkCount || 0,
+          totalBytes: data.totalBytes || 0,
+        })
+      }
+    } catch {}
+  }
+
+  const fetchProviders = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/storage/providers`, { headers: h() })
+      const data = await res.json()
+      setProviders(data?.providers || [])
+    } catch {}
+  }
+
+  const toggleLocalDisk = async () => {
+    if (!localDisk) return
+    const newState = !localDisk.enabled
+    try {
+      const res = await fetch(`${API_URL}/api/v1/res54-local/${newState ? 'enable' : 'disable'}`, {
+        method: 'POST', headers: h(),
+      })
+      if (res.ok) {
+        setLocalDisk(prev => prev ? { ...prev, enabled: newState } : prev)
+        toast({ title: newState ? 'Local disk enabled' : 'Local disk disabled' })
+      } else {
+        const err = await res.json()
+        toast({ title: 'Error', description: err.error, variant: 'destructive' })
+      }
+    } catch {}
+  }
+
+  const saveLocalConfig = async () => {
+    setLocalSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/api/v1/storage/providers/local`, {
+        method: 'POST', headers: h(),
+        body: JSON.stringify({
+          path: localForm.path,
+          partitionSize: parseInt(localForm.partitionSize) || 0,
+        }),
+      })
+      if (res.ok) {
+        toast({ title: 'Local disk configured' })
+        setShowLocalForm(false)
+        fetchLocalDiskStatus()
+      } else {
+        const err = await res.json()
+        toast({ title: 'Error', description: err.error, variant: 'destructive' })
+      }
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    }
+    setLocalSaving(false)
+  }
+
+  const wipeLocalChunks = async () => {
+    if (!confirm('Delete all local chunks? This cannot be undone.')) return
+    try {
+      const res = await fetch(`${API_URL}/api/v1/res54-local/chunks`, { method: 'DELETE', headers: h() })
+      if (res.ok) {
+        const data = await res.json()
+        toast({ title: `Deleted ${data.deletedCount} chunks` })
+        fetchLocalDiskStatus()
+      }
+    } catch {}
+  }
+
+  const removeProvider = async (id: string) => {
+    if (!confirm('Remove this provider?')) return
+    try {
+      const res = await fetch(`${API_URL}/api/v1/storage/providers/${id}`, { method: 'DELETE', headers: h() })
+      if (res.ok) {
+        setProviders(prev => prev.filter(p => p.id !== id))
+        toast({ title: 'Provider removed' })
+      }
+    } catch {}
+  }
+
+  const setDefaultProvider = async (id: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/storage/providers/${id}/default`, { method: 'PATCH', headers: h() })
+      if (res.ok) {
+        toast({ title: 'Default provider updated' })
+        fetchProviders()
+      }
+    } catch {}
+  }
+
   useEffect(() => {
     fetchCbisStatus()
     fetchCbisKeys()
+    fetchLocalDiskStatus()
+    fetchProviders()
   }, [])
 
   const fetchCbisStatus = async () => {
@@ -83,7 +186,7 @@ export default function AccountSettings() {
 
   const handleGenerateCbis = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/cbis/generate`, { method: 'POST', headers: h() })
+      const res = await fetch(`${API_URL}/api/v1/cbis/generate`, { method: 'POST', headers: h(), body: '{}' })
       const data = await res.json()
       if (data.success) {
         setGeneratedKey(data.privateKey)
@@ -98,6 +201,14 @@ export default function AccountSettings() {
       const res = await fetch(`${API_URL}/api/v1/cbis/keys/${id}`, { method: 'DELETE', headers: h() })
       if (res.ok) { fetchCbisKeys(); toast({ title: 'Key revoked' }) }
     } catch {}
+  }
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
   const copyKey = () => {
@@ -233,22 +344,142 @@ export default function AccountSettings() {
           </Card>
         )}
 
-        {/* Storage link */}
+        {/* Storage */}
         <Card className="border-border/30 bg-card/50 backdrop-blur-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-border/20 flex items-center gap-2">
             <Database className="w-4 h-4 text-primary" />
             <span className="text-sm font-semibold">Storage</span>
+            <Button variant="outline" size="sm" className="text-xs h-7 gap-1 rounded-lg ml-auto"
+              onClick={() => navigate('/settings/providers')}>
+              <Server className="w-3 h-3" /> Providers
+            </Button>
           </div>
-          <div className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm">Storage Providers</p>
-                <p className="text-xs text-muted-foreground">GitHub, R2, S3 backends</p>
+          <div className="p-5 space-y-4">
+            {/* Local Disk */}
+            <div className="rounded-xl bg-accent/20 p-4 border border-border/20">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">Local Disk</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {localDisk && (
+                    <>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                        localDisk.enabled
+                          ? 'bg-emerald-500/10 text-emerald-400'
+                          : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {localDisk.enabled ? 'Active' : 'Disabled'}
+                      </span>
+                      <button onClick={toggleLocalDisk}
+                        className="p-1.5 rounded-md hover:bg-accent/50 text-muted-foreground">
+                        {localDisk.enabled ? <PowerOff className="w-3 h-3" /> : <Power className="w-3 h-3" />}
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => { setShowLocalForm(true); setLocalForm({
+                    path: localDisk?.path || './data/chunks',
+                    partitionSize: String(localDisk?.partitionSize || 0),
+                  })}}
+                    className="p-1.5 rounded-md hover:bg-accent/50 text-muted-foreground">
+                    <Settings2 className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
-              <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5 rounded-lg" onClick={() => navigate('/settings/providers')}>
-                <Server className="w-3 h-3" /> Manage
-              </Button>
+
+              {localDisk && (
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="text-center p-2 rounded-lg bg-background/50">
+                    <p className="text-lg font-semibold">{localDisk.chunkCount}</p>
+                    <p className="text-[10px] text-muted-foreground">Chunks</p>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-background/50">
+                    <p className="text-lg font-semibold">{formatBytes(localDisk.totalBytes)}</p>
+                    <p className="text-[10px] text-muted-foreground">Used</p>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-background/50">
+                    <p className="text-lg font-semibold">{localDisk.partitionSize || '∞'}</p>
+                    <p className="text-[10px] text-muted-foreground">GB Limit</p>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[10px] text-muted-foreground mb-1">
+                Path: <code className="text-[9px] bg-background/80 px-1 py-0.5 rounded">{localDisk?.path || './data/chunks'}</code>
+              </p>
+
+              {localDisk && localDisk.chunkCount > 0 && (
+                <button onClick={wipeLocalChunks}
+                  className="text-[10px] text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 mt-2">
+                  <Trash2 className="w-3 h-3" /> Wipe all chunks
+                </button>
+              )}
+
+              {showLocalForm && (
+                <div className="mt-3 p-3 rounded-lg bg-background/50 border border-border/30 space-y-3">
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Storage Path</label>
+                    <Input type="text" value={localForm.path}
+                      onChange={e => setLocalForm(p => ({ ...p, path: e.target.value }))}
+                      className="h-8 text-xs rounded-lg" placeholder="./data/chunks" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Max Partition (GB, 0 = unlimited)</label>
+                    <Input type="number" value={localForm.partitionSize}
+                      onChange={e => setLocalForm(p => ({ ...p, partitionSize: e.target.value }))}
+                      className="h-8 text-xs rounded-lg" placeholder="0" min="0" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="text-xs h-7 gap-1" onClick={saveLocalConfig} disabled={localSaving}>
+                      {localSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowLocalForm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* External Providers */}
+            {providers.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Connected Providers ({providers.length})</p>
+                {providers.map(p => (
+                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-accent/20 border border-border/20">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-3.5 h-3.5 text-primary" />
+                      <div>
+                        <span className="text-xs font-medium capitalize">{p.provider_type}</span>
+                        {p.is_default && (
+                          <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary">Default</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!p.is_default && (
+                        <button onClick={() => setDefaultProvider(p.id)}
+                          className="text-[9px] text-muted-foreground hover:text-primary px-2 py-1 rounded border border-border/30">
+                          Set Default
+                        </button>
+                      )}
+                      <button onClick={() => removeProvider(p.id)}
+                        className="p-1 text-muted-foreground hover:text-destructive rounded-md hover:bg-destructive/10">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {providers.length === 0 && (
+              <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5 rounded-lg w-full"
+                onClick={() => navigate('/settings/providers')}>
+                <Server className="w-3 h-3" /> Add Storage Provider
+              </Button>
+            )}
           </div>
         </Card>
 

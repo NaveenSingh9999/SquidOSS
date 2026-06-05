@@ -1,10 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { sql } from '../db/index.js'
 import { NotFoundError } from '../utils/errors.js'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
-import { resolve } from 'node:path'
-
-const STORAGE_DIR = resolve(process.cwd(), 'data', 'files')
+import { uploadToProvider, downloadFromProvider, deleteFromProvider } from '../services/storage-backend.js'
 
 export default async function fileRoutes(fastify: FastifyInstance) {
   // List files
@@ -79,13 +76,8 @@ export default async function fileRoutes(fastify: FastifyInstance) {
       workspaceId = ws[0].id
     }
 
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const storagePath = `${userId}/${Date.now()}_${safeName}`
-
-    // Persist to disk
-    const diskDir = resolve(STORAGE_DIR, userId)
-    if (!existsSync(diskDir)) mkdirSync(diskDir, { recursive: true })
-    writeFileSync(resolve(diskDir, `${Date.now()}_${safeName}`), buffer)
+    // Upload via storage backend (local disk or configured provider)
+    const storagePath = await uploadToProvider(userId, buffer, fileName, providerId)
 
     const [file] = await sql`
       INSERT INTO files (user_id, name, type, size, storage_path, workspace_id, parent_folder, storage_provider_id)
@@ -106,10 +98,9 @@ export default async function fileRoutes(fastify: FastifyInstance) {
     if (!file) throw new NotFoundError('File')
 
     const f = file as any
-    const diskFile = resolve(STORAGE_DIR, f.storage_path)
-    if (!existsSync(diskFile)) throw new NotFoundError('File on disk')
+    const content = await downloadFromProvider(f.storage_path, userId)
+    if (!content) throw new NotFoundError('File on storage')
 
-    const content = readFileSync(diskFile)
     reply.header('Content-Type', f.type || 'application/octet-stream')
     reply.header('Content-Disposition', `attachment; filename="${f.name}"`)
     reply.header('Content-Length', content.length)

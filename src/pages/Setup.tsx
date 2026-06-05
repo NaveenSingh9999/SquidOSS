@@ -5,12 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { ArrowRight, Shield, Server, Key, User, Check, HardDrive, Users, SlidersHorizontal } from '@/lib/icon-map'
 
-const API_URL = (() => {
-  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev'))
-    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
-  return 'http://localhost:3000'
-})().replace(/\/+$/, '')
+import { API_URL } from '@/lib/api-url'
 
 type Step = 'welcome' | 'sudo' | 'providers' | 'users' | 'features' | 'naming' | 'deploy'
 

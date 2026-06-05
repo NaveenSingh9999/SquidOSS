@@ -6,12 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Shield, Key, AlertTriangle, Lock } from '@/lib/icon-map'
 
-const API_URL = (() => {
-  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev'))
-    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
-  return 'http://localhost:3000'
-})().replace(/\/+$/, '')
+import { API_URL } from '@/lib/api-url'
 
 export default function AdminAuth() {
   const navigate = useNavigate()

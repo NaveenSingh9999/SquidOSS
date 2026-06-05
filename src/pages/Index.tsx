@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-
-const API_URL = import.meta.env.VITE_SQUIDOSS_API_URL || 'http://localhost:3000'
+import { API_URL } from '@/lib/api-url'
 
 export default function Index() {
   const { user, loading } = useAuth()
@@ -12,12 +11,20 @@ export default function Index() {
   useEffect(() => {
     async function check() {
       try {
+        const token = localStorage.getItem('squidoss_token')
+        const headers: Record<string, string> = {}
+        if (token) headers['Authorization'] = `Bearer ${token}`
+
         const [healthRes, statusRes] = await Promise.all([
-          fetch(`${API_URL}/health`),
-          fetch(`${API_URL}/auth/setup-status`).catch(() => ({ json: () => ({ setupComplete: false }) })),
+          fetch(`${API_URL}/health`, { headers }),
+          fetch(`${API_URL}/auth/setup-status`, {
+            headers,
+            mode: 'cors',
+            credentials: 'include',
+          }).catch(() => new Response(JSON.stringify({ setupComplete: false }))),
         ])
-        const health = await healthRes.json()
-        const status = await statusRes.json()
+        const health = await healthRes.json().catch(() => ({ database: 'disconnected' }))
+        const status = await statusRes.json().catch(() => ({ setupComplete: false }))
         setDbOnline(health.database === 'connected')
         setSetupComplete(status.setupComplete || !!localStorage.getItem('squidoss_setup_complete'))
       } catch {

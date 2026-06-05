@@ -8,14 +8,13 @@ import {
   Search, Upload, Folder, File, Trash2, Home, ChevronRight,
   Download, Settings, RefreshCw, LogOut, PanelLeft, PanelLeftClose,
   Image, Video, Music, FileText, Archive, Shield, Plus, X,
+  Loader2, CheckCircle, XCircle, Clock, ArrowLeft,
+  LayoutGrid, LayoutList, Lock, Share2, MoreVertical,
 } from '@/lib/icon-map'
+import { API_URL } from '@/lib/api-url'
 
-const API_URL = (() => {
-  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev'))
-    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
-  return 'http://localhost:3000'
-})().replace(/\/+$/, '')
+const token = () => localStorage.getItem('squidoss_token')
+const h = () => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) })
 
 interface FileItem {
   id: string; name: string; type?: string; size?: number; created_at: string
@@ -27,6 +26,11 @@ interface FolderItem {
   id: string; name: string; path: string; created_at: string
   parent_folder?: string | null
 }
+
+  interface ProgressTask {
+    id: string; name: string; progress: number; status: 'uploading' | 'downloading' | 'complete' | 'error'
+    size?: number; error?: string; speed?: number; eta?: number; startTime?: number
+  }
 
 const FILE_ICONS: Record<string, any> = {
   image: Image, video: Video, audio: Music,
@@ -42,11 +46,32 @@ function getIcon(type?: string) {
   return File
 }
 
+function getIconColor(type?: string): string {
+  if (!type) return 'text-muted-foreground'
+  if (type.startsWith('image/')) return 'text-rose-500'
+  if (type.startsWith('video/')) return 'text-violet-500'
+  if (type.startsWith('audio/')) return 'text-emerald-500'
+  if (type.includes('pdf')) return 'text-red-500'
+  if (type.includes('zip') || type.includes('tar') || type.includes('rar')) return 'text-amber-500'
+  if (type.startsWith('text/') || type.includes('json')) return 'text-sky-500'
+  return 'text-muted-foreground'
+}
+
 function fmtBytes(b?: number) {
   if (!b) return ''
   const u = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(b) / Math.log(1024))
   return `${(b / Math.pow(1024, i)).toFixed(1)} ${u[i]}`
+}
+
+function timeAgo(date: string) {
+  const diff = Date.now() - new Date(date).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return new Date(date).toLocaleDateString()
 }
 
 export default function Dashboard() {
@@ -63,19 +88,18 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'files' | 'trash'>('files')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [trashedFiles, setTrashedFiles] = useState<FileItem[]>([])
-  const [showUpload, setShowUpload] = useState(false)
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [fullSearch, setFullSearch] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
   const [isSudo, setIsSudo] = useState(false)
+  const [progressTasks, setProgressTasks] = useState<ProgressTask[]>([])
+  const [showProgress, setShowProgress] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const uploadMenuRef = useRef<HTMLDivElement>(null)
-
-  const token = () => localStorage.getItem('squidoss_token')
-  const h = () => ({ 'Content-Type': 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) })
+  const progressIdCounter = useRef(0)
 
   useEffect(() => {
     fetch(`${API_URL}/api/v1/cbis/status`, { headers: h() })
@@ -118,20 +142,129 @@ export default function Dashboard() {
 
   const goTo = (path: string) => { setCurrentFolder(path); setSearchQuery('') }
 
-  const handleUpload = () => uploadRef.current?.click()
+  const addProgress = (name: string, status: ProgressTask['status'] = 'uploading', size?: number) => {
+    const id = `task_${++progressIdCounter.current}`
+    setProgressTasks(prev => [...prev, { id, name, progress: 0, status, size }])
+    setShowProgress(true)
+    return id
+  }
+
+  const updateProgress = (id: string, progress: number, status?: ProgressTask['status']) => {
+    setProgressTasks(prev => prev.map(t => t.id === id ? { ...t, progress, ...(status ? { status } : {}) } : t))
+  }
+
+  const removeProgress = (id: string) => {
+    setProgressTasks(prev => prev.filter(t => t.id !== id))
+  }
+
+  const formatSpeed = (bytesPerSec: number): string => {
+    if (!bytesPerSec) return ''
+    const u = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+    const i = Math.floor(Math.log(bytesPerSec) / Math.log(1024))
+    return `${(bytesPerSec / Math.pow(1024, i)).toFixed(1)} ${u[i]}`
+  }
+
+  const formatEta = (seconds: number): string => {
+    if (!seconds || seconds <= 0 || !isFinite(seconds)) return ''
+    if (seconds < 60) return `${Math.round(seconds)}s`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
+    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
+  }
+
+  const uploadWithProgress = async (file: File, parentFolder: string) => {
+    const taskId = addProgress(file.name, 'uploading', file.size)
+    const startTime = Date.now()
+    return new Promise<void>((resolve, reject) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('parent_folder', parentFolder)
+
+      const xhr = new XMLHttpRequest()
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100)
+          const elapsed = (Date.now() - startTime) / 1000
+          const speed = elapsed > 0 ? e.loaded / elapsed : 0
+          const remaining = e.total - e.loaded
+          const eta = speed > 0 ? remaining / speed : 0
+          updateProgress(taskId, pct, 'uploading')
+          setProgressTasks(prev => prev.map(t => t.id === taskId ? { ...t, speed, eta } : t))
+        }
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          updateProgress(taskId, 100, 'complete')
+          toast({ title: file.name })
+          setTimeout(() => removeProgress(taskId), 3000)
+          resolve()
+        } else {
+          updateProgress(taskId, 0, 'error')
+          reject(new Error(`Upload failed: ${xhr.status}`))
+        }
+      }
+      xhr.onerror = () => {
+        updateProgress(taskId, 0, 'error')
+        reject(new Error('Network error'))
+      }
+      xhr.open('POST', `${API_URL}/files/upload`)
+      xhr.setRequestHeader('Authorization', `Bearer ${token()}`)
+      xhr.send(fd)
+    })
+  }
+
+  const downloadWithProgress = async (file: FileItem) => {
+    const taskId = addProgress(file.name, 'downloading', file.size)
+    const startTime = Date.now()
+    try {
+      const xhr = new XMLHttpRequest()
+      xhr.responseType = 'blob'
+      xhr.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100)
+          const elapsed = (Date.now() - startTime) / 1000
+          const speed = elapsed > 0 ? e.loaded / elapsed : 0
+          const remaining = e.total - e.loaded
+          const eta = speed > 0 ? remaining / speed : 0
+          updateProgress(taskId, pct, 'downloading')
+          setProgressTasks(prev => prev.map(t => t.id === taskId ? { ...t, speed, eta } : t))
+        }
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          updateProgress(taskId, 100, 'complete')
+          const blob = xhr.response
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url; a.download = file.name; a.click()
+          URL.revokeObjectURL(url)
+          setTimeout(() => removeProgress(taskId), 3000)
+        } else {
+          updateProgress(taskId, 0, 'error')
+        }
+      }
+      xhr.onerror = () => {
+        updateProgress(taskId, 0, 'error')
+        toast({ title: 'Download failed', variant: 'destructive' })
+      }
+      xhr.open('GET', `${API_URL}/files/${file.id}/download`)
+      xhr.setRequestHeader('Authorization', `Bearer ${token()}`)
+      xhr.send()
+    } catch {
+      updateProgress(taskId, 0, 'error')
+      toast({ title: 'Download failed', variant: 'destructive' })
+    }
+  }
 
   const onFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files || [])
+    setUploadMenuOpen(false)
     for (const f of selected) {
-      const fd = new FormData()
-      fd.append('file', f)
-      fd.append('parent_folder', currentFolder)
       try {
-        const r = await fetch(`${API_URL}/files/upload`, {
-          method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
-        })
-        if (r.ok) { toast({ title: f.name }); fetchFiles() }
-      } catch {}
+        await uploadWithProgress(f, currentFolder)
+        fetchFiles()
+      } catch (e: any) {
+        toast({ title: 'Upload failed', description: e.message, variant: 'destructive' })
+      }
     }
     if (uploadRef.current) uploadRef.current.value = ''
   }
@@ -158,18 +291,6 @@ export default function Dashboard() {
       method: 'POST', headers: h(), body: JSON.stringify({ action: 'permanent_delete', fileId: file.id }),
     })
     if (r.ok) { setTrashedFiles(p => p.filter(f => f.id !== file.id)); toast({ title: 'Deleted' }) }
-  }
-
-  const handleDownload = async (file: FileItem) => {
-    try {
-      const r = await fetch(`${API_URL}/files/${file.id}/download`, { headers: h() })
-      if (!r.ok) throw new Error()
-      const blob = await r.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = file.name; a.click()
-      URL.revokeObjectURL(url)
-    } catch { toast({ title: 'Download failed', variant: 'destructive' }) }
   }
 
   const handleCreateFolder = async () => {
@@ -209,8 +330,7 @@ export default function Dashboard() {
     try {
       const res = await fetch(`${API_URL}/api/v1/query/files?select=*&filter=is_deleted.false,like.name.${encodeURIComponent(`%${q}%`)}&limit=20`, { headers: h() })
       const data = await res.json()
-      const results = Array.isArray(data) ? data : data?.data || []
-      setSearchResults(results)
+      setSearchResults(Array.isArray(data) ? data : data?.data || [])
     } catch {}
     setSearching(false)
   }, [])
@@ -227,7 +347,6 @@ export default function Dashboard() {
     setTimeout(() => searchInputRef.current?.focus(), 100)
   }
 
-  // Close upload menu on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target as Node)) {
@@ -238,7 +357,6 @@ export default function Dashboard() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Close search on Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSearchOpen(false)
@@ -253,14 +371,19 @@ export default function Dashboard() {
     const parts = currentFolder.split('/').filter(Boolean)
     return (
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        <button onClick={() => goTo('')} className="hover:text-foreground"><Home className="w-3 h-3" /></button>
+        <button onClick={() => goTo('')} className="hover:text-foreground flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-accent/50 transition-all">
+          <Home className="w-3.5 h-3.5" />
+        </button>
         {parts.map((p, i) => {
           const path = parts.slice(0, i + 1).join('/')
+          const isLast = i === parts.length - 1
           return (
             <React.Fragment key={path}>
-              <ChevronRight className="w-2.5 h-2.5" />
-              <button onClick={() => i < parts.length - 1 && goTo(path)}
-                className={i === parts.length - 1 ? 'text-foreground font-medium cursor-default' : 'hover:text-foreground'}>
+              <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
+              <button onClick={() => !isLast && goTo(path)}
+                className={`px-2 py-1 rounded-lg transition-all text-sm ${
+                  isLast ? 'text-foreground font-medium cursor-default bg-primary/10' : 'hover:text-foreground hover:bg-accent/50'
+                }`}>
                 {p}
               </button>
             </React.Fragment>
@@ -270,36 +393,103 @@ export default function Dashboard() {
     )
   }
 
+  const FolderCard = ({ folder }: { folder: FolderItem }) => (
+    <button onClick={() => goTo(folder.path)}
+      className="group relative overflow-hidden rounded-xl border border-border/40 bg-card/50 hover:bg-card hover:border-border/70 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-[2px] transition-all duration-[250ms] ease-out cursor-pointer text-left">
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary/50" />
+      <div className="p-4 flex flex-col gap-3">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20 group-hover:scale-105 group-hover:bg-primary/15 transition-all duration-200">
+          <Folder className="w-5 h-5 text-primary" weight="light" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground/90 group-hover:text-foreground truncate leading-snug transition-colors">{folder.name}</p>
+          <p className="text-xs text-muted-foreground/70 mt-0.5">{timeAgo(folder.created_at)}</p>
+        </div>
+      </div>
+    </button>
+  )
+
   const FileCard = ({ file, inTrash }: { file: FileItem; inTrash?: boolean }) => {
     const Icon = getIcon(file.type)
+    const iconColor = getIconColor(file.type)
     const isImage = file.type?.startsWith('image/')
+    const isFolder = false
+    const gridMaxNameLen = viewMode === 'grid' ? 22 : 40
+
+    if (viewMode === 'list') {
+      return (
+        <div className="group relative flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card/50 border border-border/40 hover:bg-accent/50 hover:border-border/70 transition-all duration-150 cursor-default">
+          <div className="flex items-center justify-center shrink-0 w-10 h-10 rounded-xl bg-muted/30 border border-border/20 group-hover:bg-muted/50 group-hover:border-border/40 transition-all">
+            <Icon className={`w-5 h-5 ${iconColor}`} weight="light" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate text-foreground/90 group-hover:text-foreground transition-colors">{file.name}</p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-xs text-muted-foreground/70">{fmtBytes(file.size)}</span>
+              <span className="text-muted-foreground/20">·</span>
+              <span className="text-xs text-muted-foreground/70">{timeAgo(file.created_at)}</span>
+              {file.encrypted && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Lock className="w-2.5 h-2.5" /> Encrypted
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            {inTrash ? (
+              <>
+                <button onClick={() => handleRestore(file)} className="px-2 py-1 rounded-lg hover:bg-accent/50 text-xs text-muted-foreground hover:text-foreground border border-transparent hover:border-border/30 transition-all">Restore</button>
+                <button onClick={() => handlePermanentDelete(file)} className="px-2 py-1 rounded-lg hover:bg-red-500/10 text-xs text-red-400 border border-transparent hover:border-red-500/20 transition-all">Delete</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => downloadWithProgress(file)} className="p-1.5 rounded-lg hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-all"><Download className="w-3.5 h-3.5" weight="light" /></button>
+                <button onClick={() => handleDelete(file)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 transition-all"><Trash2 className="w-3.5 h-3.5" weight="light" /></button>
+              </>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     return (
-      <div className="group relative rounded-lg border border-border/20 bg-card/40 hover:bg-card/60 hover:border-primary/20 transition-all overflow-hidden">
-        {isImage && file.storage_path ? (
+      <div className="group relative rounded-xl border border-border/40 bg-card/50 hover:bg-card hover:border-border/70 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-[2px] transition-all duration-[250ms] ease-out overflow-hidden cursor-default">
+        {isImage ? (
           <div className="h-32 bg-muted/30 overflow-hidden">
             <img src={`${API_URL}/files/${file.id}/download`} alt={file.name}
               className="w-full h-full object-cover" loading="lazy"
               onError={e => { (e.target as HTMLElement).style.display = 'none' }} />
           </div>
         ) : (
-          <div className="h-32 flex items-center justify-center bg-accent/10">
-            <Icon className="w-12 h-12 text-muted-foreground/40" />
+          <div className="h-32 flex items-center justify-center bg-muted/20">
+            <Icon className={`w-12 h-12 ${iconColor} opacity-30 group-hover:opacity-40 transition-opacity`} weight="light" />
           </div>
         )}
-        <div className="p-3 space-y-1">
-          <p className="text-sm truncate font-medium" title={file.name}>{file.name}</p>
-          <p className="text-[10px] text-muted-foreground">{fmtBytes(file.size)}</p>
+        <div className="p-3 space-y-1.5">
+          <p className="text-sm font-medium truncate text-foreground/85 group-hover:text-foreground transition-colors" title={file.name}>
+            {file.name && file.name.length > gridMaxNameLen ? file.name.substring(0, gridMaxNameLen) + '…' : file.name}
+          </p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
+            <span className="font-medium">{fmtBytes(file.size)}</span>
+            <div className="flex items-center gap-1 ml-auto">
+              {file.encrypted && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Lock className="w-2 h-2" />
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="absolute inset-0 bg-background/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2 gap-1">
+        <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-background/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end justify-end p-2 gap-1">
           {inTrash ? (
             <>
-              <button onClick={() => handleRestore(file)} className="p-1.5 rounded-md bg-background/80 hover:bg-background text-xs">Restore</button>
-              <button onClick={() => handlePermanentDelete(file)} className="p-1.5 rounded-md bg-red-500/20 hover:bg-red-500/30 text-xs text-red-400">Delete</button>
+              <button onClick={() => handleRestore(file)} className="px-2 py-1 rounded-lg bg-background/90 hover:bg-background text-xs text-foreground border border-border/30 backdrop-blur-sm">Restore</button>
+              <button onClick={() => handlePermanentDelete(file)} className="px-2 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-xs text-red-400 border border-red-500/20">Delete</button>
             </>
           ) : (
             <>
-              <button onClick={() => handleDownload(file)} className="p-1.5 rounded-md bg-background/80 hover:bg-background"><Download className="w-3.5 h-3.5" /></button>
-              <button onClick={() => handleDelete(file)} className="p-1.5 rounded-md bg-red-500/20 hover:bg-red-500/30 text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+              <button onClick={() => downloadWithProgress(file)} className="p-1.5 rounded-lg bg-background/90 hover:bg-background border border-border/30 backdrop-blur-sm"><Download className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" weight="light" /></button>
+              <button onClick={() => handleDelete(file)} className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/20"><Trash2 className="w-3.5 h-3.5 text-red-400" weight="light" /></button>
             </>
           )}
         </div>
@@ -308,6 +498,8 @@ export default function Dashboard() {
   }
 
   const sidebarW = sidebarCollapsed ? 'w-14' : 'w-48'
+  const activeTasks = progressTasks.filter(t => t.status === 'uploading' || t.status === 'downloading')
+  const hasActiveTasks = activeTasks.length > 0
 
   return (
     <div className="h-screen flex bg-background overflow-hidden">
@@ -372,30 +564,19 @@ export default function Dashboard() {
         <header className="flex items-center gap-3 h-12 px-4 border-b border-border/20 bg-background shrink-0">
           <Breadcrumbs />
 
-          {/* Full search overlay */}
           {searchOpen && (
             <div className="fixed inset-0 z-50 bg-background/80" onClick={() => setSearchOpen(false)}>
               <div className="max-w-xl mx-auto mt-24 p-4" onClick={e => e.stopPropagation()}>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder="Search files, folders, settings..."
-                    value={fullSearch}
-                    onChange={e => onFullSearchChange(e.target.value)}
-                    className="w-full pl-10 pr-10 h-12 rounded-xl border border-border/30 bg-background text-sm focus:outline-none focus:border-primary/30 shadow-lg"
-                    autoFocus
-                  />
+                  <input ref={searchInputRef} type="text" placeholder="Search files and folders..."
+                    value={fullSearch} onChange={e => onFullSearchChange(e.target.value)}
+                    className="w-full pl-10 pr-10 h-12 rounded-xl border border-border/30 bg-background text-sm focus:outline-none focus:border-primary/30 shadow-lg" autoFocus />
                   <button onClick={() => setSearchOpen(false)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-
-                {searching && (
-                  <div className="mt-2 text-xs text-muted-foreground text-center">Searching...</div>
-                )}
-
+                {searching && <div className="mt-2 text-xs text-muted-foreground text-center">Searching...</div>}
                 {!searching && searchResults.length > 0 && (
                   <div className="mt-2 rounded-xl border border-border/20 bg-background shadow-lg overflow-hidden max-h-80 overflow-y-auto">
                     <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border/10">Files</div>
@@ -411,11 +592,7 @@ export default function Dashboard() {
                     })}
                   </div>
                 )}
-
-                {!searching && fullSearch && searchResults.length === 0 && (
-                  <div className="mt-2 text-xs text-muted-foreground text-center">No results</div>
-                )}
-
+                {!searching && fullSearch && searchResults.length === 0 && <div className="mt-2 text-xs text-muted-foreground text-center">No results</div>}
                 {!fullSearch && (
                   <div className="mt-4 text-xs text-muted-foreground text-center space-y-1">
                     <p>Search across files and folders</p>
@@ -434,8 +611,9 @@ export default function Dashboard() {
               <kbd className="hidden sm:inline text-[10px] text-muted-foreground/40 border border-border/20 rounded px-1">⌘K</kbd>
             </button>
             <button onClick={() => setViewMode(v => v === 'grid' ? 'list' : 'grid')}
-              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent/50">
-              {viewMode === 'grid' ? '☰' : '⊞'}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all"
+              title={viewMode === 'grid' ? 'List view' : 'Grid view'}>
+              {viewMode === 'grid' ? <LayoutList className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
             </button>
             <div className="relative" ref={uploadMenuRef}>
               <Button size="sm" className="text-xs h-8 gap-1.5 rounded-lg" onClick={() => setUploadMenuOpen(!uploadMenuOpen)}>
@@ -443,7 +621,7 @@ export default function Dashboard() {
               </Button>
               {uploadMenuOpen && (
                 <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border/20 bg-background shadow-lg z-40 overflow-hidden">
-                  <button onClick={handleUpload}
+                  <button onClick={() => uploadRef.current?.click()}
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-accent/20 transition-colors text-left">
                     <Upload className="w-4 h-4 text-muted-foreground" /> Upload Files
                   </button>
@@ -466,7 +644,7 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 relative">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -480,7 +658,7 @@ export default function Dashboard() {
                 <p className="text-lg font-medium">No files yet</p>
                 <p className="text-sm text-muted-foreground">Upload your first file to get started</p>
               </div>
-              <Button onClick={handleUpload} className="gap-2 rounded-xl">
+              <Button onClick={() => uploadRef.current?.click()} className="gap-2 rounded-xl">
                 <Upload className="w-4 h-4" /> Upload Files
               </Button>
             </div>
@@ -490,63 +668,30 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground">Trash is empty</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Folders */}
+            <div className="space-y-6">
               {activeTab === 'files' && folders.length > 0 && (
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Folders</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Folders</p>
                   <div className={viewMode === 'grid'
                     ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3'
                     : 'space-y-1'}>
-                    {folders.map(f => (
-                      <button key={f.id} onClick={() => goTo(f.path)}
-                        className={`flex items-center gap-3 rounded-lg border border-border/20 bg-card/20 hover:bg-card/40 hover:border-primary/20 transition-all ${
-                          viewMode === 'grid' ? 'p-4 flex-col text-center' : 'p-3 text-left'
-                        }`}>
-                        <Folder className={`${viewMode === 'grid' ? 'w-10 h-10' : 'w-5 h-5'} text-primary/60`} />
-                        <p className="text-sm truncate font-medium">{f.name}</p>
-                      </button>
-                    ))}
+                    {folders.map(f => <FolderCard key={f.id} folder={f} />)}
                   </div>
                 </div>
               )}
 
-              {/* Files */}
               {filtered.length > 0 && (
                 <div>
                   {activeTab === 'files' && folders.length > 0 && (
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2 mt-6">Files</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3 mt-2">Files</p>
                   )}
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                      {filtered.map(f => (
-                        <FileCard key={f.id} file={f} inTrash={activeTab === 'trash'} />
-                      ))}
+                      {filtered.map(f => <FileCard key={f.id} file={f} inTrash={activeTab === 'trash'} />)}
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      {filtered.map(f => {
-                        const Icon = getIcon(f.type)
-                        return (
-                          <div key={f.id}
-                            className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border/10 bg-card/10 hover:bg-card/30 transition-all group">
-                            <Icon className="w-5 h-5 text-muted-foreground/50 shrink-0" />
-                            <p className="flex-1 text-sm truncate">{f.name}</p>
-                            <p className="text-xs text-muted-foreground">{fmtBytes(f.size)}</p>
-                            {activeTab === 'trash' ? (
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => handleRestore(f)} className="p-1 rounded hover:bg-accent/50 text-xs">Restore</button>
-                                <button onClick={() => handlePermanentDelete(f)} className="p-1 rounded hover:bg-red-500/10 text-xs text-red-400">Delete</button>
-                              </div>
-                            ) : (
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => handleDownload(f)} className="p-1 rounded hover:bg-accent/50"><Download className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => handleDelete(f)} className="p-1 rounded hover:bg-red-500/10 text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
+                      {filtered.map(f => <FileCard key={f.id} file={f} inTrash={activeTab === 'trash'} />)}
                     </div>
                   )}
                 </div>
@@ -555,6 +700,105 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Progress Panel */}
+      {progressTasks.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] bg-background/95 backdrop-blur-xl border rounded-xl shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <button onClick={() => setShowProgress(!showProgress)}
+            className="w-full flex items-center justify-between px-4 py-2.5 border-b border-border/10 hover:bg-accent/20 transition-colors">
+            <div className="flex items-center gap-2">
+              <div className={`p-1 rounded-lg ${hasActiveTasks ? 'bg-primary/10 text-primary' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                {hasActiveTasks ? (
+                  <Upload className="w-3.5 h-3.5 animate-pulse" weight="light" />
+                ) : (
+                  <CheckCircle className="w-3.5 h-3.5" weight="light" />
+                )}
+              </div>
+              <div className="text-left">
+                <span className="text-sm font-medium">
+                  {hasActiveTasks ? `${activeTasks.length} Active Transfer${activeTasks.length > 1 ? 's' : ''}` : 'Transfers Complete'}
+                </span>
+              </div>
+            </div>
+            <span className="text-xs text-muted-foreground transition-transform duration-200" style={{ transform: showProgress ? 'rotate(180deg)' : 'none' }}>▼</span>
+          </button>
+          {showProgress && (
+            <div className="max-h-72 overflow-y-auto p-2 space-y-1.5 animate-in fade-in duration-200">
+              {progressTasks.map(task => {
+                const isActive = task.status === 'uploading' || task.status === 'downloading'
+                const isError = task.status === 'error'
+                const isComplete = task.status === 'complete'
+                return (
+                  <div key={task.id} className={`p-2.5 rounded-lg border transition-all duration-200 ${
+                    isError ? 'bg-destructive/5 border-destructive/30' :
+                    isComplete ? 'bg-emerald-500/5 border-emerald-500/30' :
+                    'bg-card/50 border-border/20 hover:bg-card/80'
+                  }`}>
+                    <div className="flex items-start gap-2.5">
+                      <div className={`p-1.5 rounded-lg shrink-0 ${
+                        isComplete ? 'bg-emerald-500/10 text-emerald-500' :
+                        isError ? 'bg-destructive/10 text-destructive' :
+                        task.status === 'uploading' ? 'bg-blue-500/10 text-blue-500' :
+                        'bg-purple-500/10 text-purple-500'
+                      }`}>
+                        {isComplete ? <CheckCircle className="w-3.5 h-3.5" weight="light" /> :
+                         isError ? <XCircle className="w-3.5 h-3.5" weight="light" /> :
+                         task.status === 'uploading' ? <Upload className="w-3.5 h-3.5" weight="light" /> :
+                         <Download className="w-3.5 h-3.5" weight="light" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium truncate" title={task.name}>{task.name}</span>
+                          <span className={`text-[10px] font-medium shrink-0 ${
+                            isComplete ? 'text-emerald-500' :
+                            isError ? 'text-destructive' :
+                            isActive ? 'text-primary' : 'text-muted-foreground'
+                          }`}>
+                            {isComplete ? 'Complete' : isError ? 'Failed' : `${task.progress}%`}
+                          </span>
+                        </div>
+                        {isActive && (
+                          <>
+                            <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-300 ${
+                                task.status === 'uploading' ? 'bg-blue-500' : 'bg-purple-500'
+                              }`} style={{ width: `${task.progress}%` }} />
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                              <span>{fmtBytes(task.size || 0)}</span>
+                              {task.speed && task.speed > 0 && (
+                                <>
+                                  <span>·</span>
+                                  <span>{formatSpeed(task.speed)}</span>
+                                </>
+                              )}
+                              {task.eta && task.eta > 0 && (
+                                <>
+                                  <span>·</span>
+                                  <span>ETA: {formatEta(task.eta)}</span>
+                                </>
+                              )}
+                            </div>
+                          </>
+                        )}
+                        {isError && task.error && (
+                          <p className="text-[10px] text-destructive mt-0.5 truncate">{task.error}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              {!hasActiveTasks && (
+                <button onClick={() => setProgressTasks([])}
+                  className="w-full text-[10px] text-muted-foreground hover:text-foreground text-center py-2 transition-colors border-t border-border/10 mt-1">
+                  Clear completed
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

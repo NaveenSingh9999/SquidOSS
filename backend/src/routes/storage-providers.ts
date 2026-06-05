@@ -113,6 +113,28 @@ export default async function storageProviderRoutes(app: FastifyInstance) {
     return { success: true, reposCreated: repos.length, repos }
   })
 
+  // PATCH /api/v1/storage/providers/:id/default - set as default
+  app.patch('/api/v1/storage/providers/:id/default', async (request) => {
+    const userId = request.user!.sub as string
+    const { id } = request.params as { id: string }
+
+    // Unset any existing default
+    await sql`
+      UPDATE storage_providers SET is_default = false
+      WHERE user_id = ${userId} AND is_default = true
+    `
+
+    // Set the new default
+    const [updated] = await sql`
+      UPDATE storage_providers SET is_default = true
+      WHERE id = ${id} AND user_id = ${userId}
+      RETURNING id, provider_type, is_default
+    `
+
+    if (!updated) throw new AppError(404, 'Provider not found')
+    return { success: true, provider: updated }
+  })
+
   // DELETE /api/v1/storage/providers/:id
   app.delete('/api/v1/storage/providers/:id', async (request) => {
     const userId = request.user!.sub as string

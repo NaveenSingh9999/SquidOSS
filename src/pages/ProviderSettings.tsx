@@ -8,15 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import {
   ArrowLeft, Plus, Trash2, Github, HardDrive, Globe, Box,
-  Database, Settings2, Server, Check, X, ExternalLink,
+  Database, Settings2, Server, Check, X, ExternalLink, Folder,
+  Power, PowerOff, Sliders, RefreshCw,
 } from '@/lib/icon-map'
 
-const API_URL = (() => {
-  if (import.meta.env.VITE_SQUIDOSS_API_URL) return import.meta.env.VITE_SQUIDOSS_API_URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev'))
-    return window.location.origin.replace(':8080', ':3000').replace(/-8080\./, '-3000.')
-  return 'http://localhost:3000'
-})().replace(/\/+$/, '')
+import { API_URL } from '@/lib/api-url'
 
 interface Provider {
   id: string
@@ -34,6 +30,10 @@ interface GithubRepo {
 }
 
 const PROVIDER_CONFIG: Record<string, { icon: any; label: string; fields: { key: string; label: string; type: string }[] }> = {
+  local: { icon: HardDrive, label: 'Local Disk', fields: [
+    { key: 'path', label: 'Storage Path', type: 'text' },
+    { key: 'partitionSize', label: 'Max Partition (GB, 0 = unlimited)', type: 'number' },
+  ]},
   github: { icon: Github, label: 'GitHub', fields: [
     { key: 'token', label: 'Personal Access Token', type: 'password' },
     { key: 'owner', label: 'Owner (user or org)', type: 'text' },
@@ -51,16 +51,22 @@ const PROVIDER_CONFIG: Record<string, { icon: any; label: string; fields: { key:
   ]},
 }
 
+const LOCAL_PROVIDER_TYPES = ['local']
+const REMOTE_PROVIDER_TYPES = ['github', 'r2', 's3']
+
 export default function ProviderSettings() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { user } = useAuth()
 
   const [providers, setProviders] = useState<Provider[]>([])
+  const [localDisk, setLocalDisk] = useState<{ enabled: boolean; path: string; partitionSize: number; chunkCount: number; totalBytes: number } | null>(null)
   const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showLocalConfig, setShowLocalConfig] = useState(false)
   const [newProviderType, setNewProviderType] = useState('github')
   const [formFields, setFormFields] = useState<Record<string, string>>({})
+  const [localForm, setLocalForm] = useState({ path: './data/chunks', partitionSize: '0' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [res54Config, setRes54Config] = useState<Record<string, { enabled: boolean; chunkSize: number }>>({})
@@ -78,6 +84,22 @@ export default function ProviderSettings() {
     setLoading(false)
   }, [])
 
+  const fetchLocalStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/res54-local/status`, { headers: headers() })
+      const data = await res.json()
+      if (data.success) {
+        setLocalDisk(prev => ({
+          enabled: prev?.enabled ?? true,
+          path: data.storagePath || './data/chunks',
+          partitionSize: 0,
+          chunkCount: data.chunkCount || 0,
+          totalBytes: data.totalBytes || 0,
+        }))
+      }
+    } catch {}
+  }, [])
+
   const fetchGithubRepos = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/api/v1/query/github_repos?select=*`, { headers: headers() })
@@ -86,7 +108,61 @@ export default function ProviderSettings() {
     } catch {}
   }, [])
 
-  useEffect(() => { fetchProviders(); fetchGithubRepos() }, [])
+  useEffect(() => { fetchProviders(); fetchGithubRepos(); fetchLocalStatus() }, [])
+
+  const toggleLocalDisk = async () => {
+    if (!localDisk) return
+    const newState = !localDisk.enabled
+    try {
+      const res = await fetch(`${API_URL}/api/v1/res54-local/${newState ? 'enable' : 'disable'}`, {
+        method: 'POST', headers: headers(),
+      })
+      if (res.ok) {
+        setLocalDisk(prev => prev ? { ...prev, enabled: newState } : prev)
+        toast({ title: newState ? 'Local disk storage enabled' : 'Local disk storage disabled' })
+      } else {
+        const err = await res.json()
+        toast({ title: 'Error', description: err.error, variant: 'destructive' })
+      }
+    } catch {}
+  }
+
+  const wipeLocalChunks = async () => {
+    if (!confirm('Delete all local chunks? This cannot be undone.')) return
+    try {
+      const res = await fetch(`${API_URL}/api/v1/res54-local/chunks`, {
+        method: 'DELETE', headers: headers(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast({ title: `Deleted ${data.deletedCount} chunks` })
+        fetchLocalStatus()
+      }
+    } catch {}
+  }
+
+  const saveLocalConfig = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/api/v1/storage/providers/local`, {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({
+          path: localForm.path,
+          partitionSize: parseInt(localForm.partitionSize) || 0,
+        }),
+      })
+      if (res.ok) {
+        toast({ title: 'Local disk configured' })
+        setShowLocalConfig(false)
+      } else {
+        const err = await res.json()
+        toast({ title: 'Error', description: err.error, variant: 'destructive' })
+      }
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    }
+    setSaving(false)
+  }
 
   const handleAddProvider = async () => {
     setSaving(true)
@@ -145,6 +221,18 @@ export default function ProviderSettings() {
     } catch {}
   }
 
+  const setDefaultProvider = async (providerId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/storage/providers/${providerId}/default`, {
+        method: 'PATCH', headers: headers(),
+      })
+      if (res.ok) {
+        toast({ title: 'Default provider updated' })
+        await fetchProviders()
+      }
+    } catch {}
+  }
+
   const toggleRes54 = async (providerId: string, enabled: boolean) => {
     setRes54Config(prev => ({ ...prev, [providerId]: { enabled, chunkSize: prev[providerId]?.chunkSize || 5 } }))
     toast({ title: enabled ? 'res54 enabled' : 'res54 disabled', description: `Provider ${providerId.slice(0, 8)}...` })
@@ -168,6 +256,92 @@ export default function ProviderSettings() {
       </header>
 
       <div className="max-w-3xl mx-auto p-4 lg:p-6 space-y-4">
+        {/* Local Disk Provider */}
+        <Card className="border-border/30">
+          <CardHeader className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-primary" />
+                <CardTitle className="text-sm">Local Disk</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                {localDisk && (
+                  <>
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatBytes(localDisk.totalBytes)} used · {localDisk.chunkCount} chunks
+                    </span>
+                    <button onClick={toggleLocalDisk}
+                      className={cn(
+                        'px-2 py-1 text-[9px] rounded border transition-colors',
+                        localDisk.enabled
+                          ? 'border-emerald-500/50 text-emerald-400 bg-emerald-500/10'
+                          : 'border-border/40 text-muted-foreground',
+                      )}>
+                      {localDisk.enabled ? 'Active' : 'Disabled'}
+                    </button>
+                  </>
+                )}
+                <Button variant="outline" size="sm" className="text-xs gap-1.5 h-7"
+                  onClick={() => { setShowLocalConfig(true); setLocalForm({
+                    path: localDisk?.path || './data/chunks',
+                    partitionSize: String(localDisk?.partitionSize || 0),
+                  })}}>
+                  <Settings2 className="w-3 h-3" /> Configure
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-muted-foreground">
+                Path: <code className="text-[9px] bg-accent/50 px-1 py-0.5 rounded">{localDisk?.path || './data/chunks'}</code>
+                {localDisk?.partitionSize ? ` · ${localDisk.partitionSize}GB partition` : ' · No limit'}
+              </p>
+              {localDisk && localDisk.chunkCount > 0 && (
+                <button onClick={wipeLocalChunks}
+                  className="text-[9px] text-red-400 hover:text-red-300 transition-colors flex items-center gap-1">
+                  <Trash2 className="w-2.5 h-2.5" /> Wipe chunks
+                </button>
+              )}
+            </div>
+
+            {/* Local config form */}
+            {showLocalConfig && (
+              <div className="mt-3 p-3 rounded-lg bg-accent/20 border border-border/30 space-y-3">
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Storage Path</label>
+                  <Input
+                    type="text"
+                    value={localForm.path}
+                    onChange={e => setLocalForm(prev => ({ ...prev, path: e.target.value }))}
+                    className="h-8 text-xs rounded-lg"
+                    placeholder="./data/chunks"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground mb-1 block">Max Partition (GB, 0 = unlimited)</label>
+                  <Input
+                    type="number"
+                    value={localForm.partitionSize}
+                    onChange={e => setLocalForm(prev => ({ ...prev, partitionSize: e.target.value }))}
+                    className="h-8 text-xs rounded-lg"
+                    placeholder="0"
+                    min="0"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" className="text-xs h-7 gap-1.5" onClick={saveLocalConfig} disabled={saving}>
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowLocalConfig(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Active Providers */}
         <Card className="border-border/30">
           <CardHeader className="px-4 py-3">
@@ -191,12 +365,21 @@ export default function ProviderSettings() {
               providers.map(p => {
                 const Icon = PROVIDER_CONFIG[p.provider_type]?.icon || Database
                 return (
-                  <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/30 hover:border-border/60 transition-colors">
+                  <div key={p.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                    p.is_default ? 'border-primary/30 bg-primary/5' : 'border-border/30 hover:border-border/60'
+                  }`}>
                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Icon className="w-4 h-4 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium capitalize">{p.provider_type}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-medium capitalize">{p.provider_type}</p>
+                        {p.is_default && (
+                          <Badge variant="default" className="text-[8px] h-4 px-1.5 bg-primary/20 text-primary border-0">
+                            Default
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-[10px] text-muted-foreground">Added {new Date(p.created_at).toLocaleDateString()}</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -204,6 +387,14 @@ export default function ProviderSettings() {
                         <Badge variant="secondary" className="text-[9px] h-5">
                           {githubRepos.length} repos
                         </Badge>
+                      )}
+
+                      {/* Set as default */}
+                      {!p.is_default && (
+                        <button onClick={() => setDefaultProvider(p.id)}
+                          className="px-2 py-1 text-[9px] rounded border border-border/40 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors">
+                          Make Default
+                        </button>
                       )}
 
                       {/* res54 toggle */}
@@ -335,4 +526,12 @@ export default function ProviderSettings() {
 
 function cn(...args: any[]) {
   return args.filter(Boolean).join(' ')
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }

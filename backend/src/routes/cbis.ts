@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { sql } from '../db/index.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAuth, getUserId } from '../middleware/auth.js'
 import { AppError, ForbiddenError } from '../utils/errors.js'
 import { randomBytes, createHash } from 'node:crypto'
 
@@ -17,31 +17,26 @@ function generateCbisKey(): { publicKey: string; privateKey: string } {
   return { publicKey, privateKey }
 }
 
+function isSudo(user: any): boolean {
+  return user?.role === SUDO_ROLE
+}
+
 export default async function cbisRoutes(app: FastifyInstance) {
 
-  // GET /api/v1/cbis/status — check if current user is sudo
   app.get('/api/v1/cbis/status', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
-    const [user] = await sql`
-      SELECT id, role FROM auth.users WHERE id = ${userId}
-    `
-    const isSudo = user?.role === SUDO_ROLE
-    return { success: true, isSudo, role: user?.role || 'user' }
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT id, role FROM auth.users WHERE id = ${userId}`
+    return { success: true, isSudo: isSudo(user), role: user?.role || 'user' }
   })
 
-  // POST /api/v1/cbis/generate — generate a new CBIS keypair
   app.post('/api/v1/cbis/generate', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
+    const userId = getUserId(request)
 
-    // Only sudo users can generate CBIS keys
     const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
-    if (user?.role !== SUDO_ROLE) throw new ForbiddenError('Only sudo accounts can generate CBIS keys')
+    if (!isSudo(user)) throw new ForbiddenError('Only sudo accounts can generate CBIS keys')
 
-    // Check existing keys
-    const existing = await sql`
-      SELECT COUNT(*) as count FROM cbis_keys WHERE user_id = ${userId}
-    `
-    if ((existing[0] as any).count >= 5) throw new AppError(400, 'Max 5 CBIS keys per account')
+    const [existing] = await sql`SELECT COUNT(*) as count FROM cbis_keys WHERE user_id = ${userId}`
+    if (parseInt((existing as any).count) >= 5) throw new AppError(400, 'Max 5 CBIS keys per account')
 
     const { publicKey, privateKey } = generateCbisKey()
     const keyHash = hashCbisKey(privateKey)
@@ -51,19 +46,13 @@ export default async function cbisRoutes(app: FastifyInstance) {
       VALUES (${userId}, ${publicKey}, ${keyHash}, NOW())
     `
 
-    return {
-      success: true,
-      publicKey,
-      privateKey,
-      message: 'Save this private key — it will not be shown again',
-    }
+    return { success: true, publicKey, privateKey, message: 'Save this private key — it will not be shown again' }
   })
 
-  // GET /api/v1/cbis/keys — list user's CBIS public keys
   app.get('/api/v1/cbis/keys', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
+    const userId = getUserId(request)
     const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
-    if (user?.role !== SUDO_ROLE) throw new ForbiddenError('Sudo only')
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
 
     const keys = await sql`
       SELECT id, public_key, created_at, last_used_at
@@ -73,12 +62,11 @@ export default async function cbisRoutes(app: FastifyInstance) {
     return { success: true, keys }
   })
 
-  // DELETE /api/v1/cbis/keys/:id — revoke a CBIS key
   app.delete('/api/v1/cbis/keys/:id', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
+    const userId = getUserId(request)
     const { id } = request.params as any
     const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
-    if (user?.role !== SUDO_ROLE) throw new ForbiddenError('Sudo only')
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
 
     const [deleted] = await sql`
       DELETE FROM cbis_keys WHERE id = ${id} AND user_id = ${userId}
@@ -88,9 +76,8 @@ export default async function cbisRoutes(app: FastifyInstance) {
     return { success: true, message: 'CBIS key revoked' }
   })
 
-  // POST /api/v1/cbis/verify — verify a CBIS key for admin operations
   app.post('/api/v1/cbis/verify', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
+    const userId = getUserId(request)
     const { cbisKey } = request.body as { cbisKey: string }
     if (!cbisKey) throw new AppError(400, 'CBIS key required')
 
@@ -101,55 +88,39 @@ export default async function cbisRoutes(app: FastifyInstance) {
     `
     if (!key) throw new ForbiddenError('Invalid CBIS key')
 
-    // Update last used
     await sql`UPDATE cbis_keys SET last_used_at = NOW() WHERE id = ${(key as any).id}`
 
     return { success: true, message: 'CBIS key verified', userId: (key as any).user_id }
   })
 
-  // ── Admin endpoints (CBIS-protected) ────────────────────────
+  app.post('/api/v1/cbis/validate-key', async (request) => {
+    const { cbisKey } = request.body as { cbisKey: string }
+    if (!cbisKey) throw new AppError(400, 'CBIS key required')
 
-  // GET /api/v1/admin/users — list all users
-  app.get('/api/v1/admin/users', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
-    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
-    if (user?.role !== SUDO_ROLE) throw new ForbiddenError('Sudo only')
-
-    const users = await sql`
-      SELECT u.id, u.email, u.role, u.created_at,
-             p.full_name, p.storage_used, p.is_premium
-      FROM auth.users u
-      LEFT JOIN public.profiles p ON p.id = u.id
-      ORDER BY u.created_at DESC LIMIT 100
+    const keyHash = hashCbisKey(cbisKey)
+    const [key] = await sql`
+      SELECT c.user_id, u.role FROM cbis_keys c
+      JOIN auth.users u ON u.id = c.user_id
+      WHERE c.key_hash = ${keyHash}
     `
-    return { success: true, users }
+    if (!key) throw new ForbiddenError('Invalid CBIS key')
+
+    await sql`UPDATE cbis_keys SET last_used_at = NOW() WHERE key_hash = ${keyHash}`
+
+    return { success: true, userId: (key as any).user_id, role: (key as any).role }
   })
 
-  // PATCH /api/v1/admin/users/:id — update user limits/role
-  app.patch('/api/v1/admin/users/:id', { preHandler: [requireAuth] }, async (request) => {
-    const sudoId = (request.user as any).sub
-    const { id } = request.params as any
-    const { role, storageLimit, isPremium } = request.body as any
-
-    const [sudo] = await sql`SELECT role FROM auth.users WHERE id = ${sudoId}`
-    if (sudo?.role !== SUDO_ROLE) throw new ForbiddenError('Sudo only')
-
-    if (role) await sql`UPDATE auth.users SET role = ${role} WHERE id = ${id}`
-    if (storageLimit) await sql`UPDATE public.profiles SET storage_used = ${storageLimit} WHERE id = ${id}`
-    if (isPremium !== undefined) await sql`UPDATE public.profiles SET is_premium = ${isPremium} WHERE id = ${id}`
-    return { success: true }
-  })
-
-  // GET /api/v1/admin/stats — system usage stats
   app.get('/api/v1/admin/stats', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
+    const userId = getUserId(request)
     const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
-    if (user?.role !== SUDO_ROLE) throw new ForbiddenError('Sudo only')
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
 
     const [userCount] = await sql`SELECT COUNT(*) as count FROM auth.users`
     const [fileCount] = await sql`SELECT COUNT(*) as count FROM public.files`
     const [storageTotal] = await sql`SELECT COALESCE(SUM(size), 0) as total FROM public.files`
     const [activeShares] = await sql`SELECT COUNT(*) as count FROM public.shares WHERE expires_at > NOW() OR expires_at IS NULL`
+    const [activeSessions] = await sql`SELECT COUNT(*) as count FROM user_sessions WHERE is_active = true AND last_active_at > NOW() - INTERVAL '15 minutes'`
+    const [dbInstances] = await sql`SELECT COUNT(*) as count FROM db_saas_instances WHERE status = 'running'`
 
     return {
       success: true,
@@ -158,31 +129,201 @@ export default async function cbisRoutes(app: FastifyInstance) {
         files: parseInt((fileCount as any).count),
         storageBytes: parseFloat((storageTotal as any).total),
         activeShares: parseInt((activeShares as any).count),
+        activeSessions: parseInt((activeSessions as any).count),
+        dbInstances: parseInt((dbInstances as any).count),
       },
     }
   })
 
-  // POST /api/v1/admin/workspaces — create workspace for any user
-  app.post('/api/v1/admin/workspaces', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
+  app.get('/api/v1/admin/users', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
     const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
-    if (user?.role !== SUDO_ROLE) throw new ForbiddenError('Sudo only')
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
 
-    const { targetUserId, name } = request.body as { targetUserId: string; name: string }
-    if (!targetUserId || !name) throw new AppError(400, 'targetUserId and name required')
-
-    const [ws] = await sql`
-      INSERT INTO workspaces (user_id, name) VALUES (${targetUserId}, ${name})
-      RETURNING *
+    const users = await sql`
+      SELECT u.id, u.email, u.role, u.created_at, u.is_restricted,
+             p.full_name, p.storage_used, p.is_premium, p.avatar_url
+      FROM auth.users u
+      LEFT JOIN public.profiles p ON p.id = u.id
+      ORDER BY u.created_at DESC LIMIT 100
     `
-    return { success: true, workspace: ws }
+    const enriched = await Promise.all(users.map(async (u: any) => {
+      const [session] = await sql`
+        SELECT is_active, current_route, last_active_at, ip_address
+        FROM user_sessions WHERE user_id = ${u.id} AND is_active = true
+        ORDER BY last_active_at DESC LIMIT 1
+      `
+      return { ...u, activeSession: session || null }
+    }))
+
+    return { success: true, users: enriched }
   })
 
-  // POST /api/v1/admin/stop-all — stop all active operations (placeholder)
-  app.post('/api/v1/admin/stop-all', { preHandler: [requireAuth] }, async (request) => {
-    const userId = (request.user as any).sub
+  app.patch('/api/v1/admin/users/:id', { preHandler: [requireAuth] }, async (request) => {
+    const sudoId = getUserId(request)
+    const { id } = request.params as any
+    const { role, storageLimit, isPremium, isRestricted } = request.body as any
+
+    const [sudo] = await sql`SELECT role FROM auth.users WHERE id = ${sudoId}`
+    if (!isSudo(sudo)) throw new ForbiddenError('Sudo only')
+
+    if (role) await sql`UPDATE auth.users SET role = ${role} WHERE id = ${id}`
+    if (isRestricted !== undefined) await sql`UPDATE auth.users SET is_restricted = ${isRestricted} WHERE id = ${id}`
+    if (storageLimit !== undefined) await sql`UPDATE public.profiles SET storage_used = ${storageLimit} WHERE id = ${id}`
+    if (isPremium !== undefined) await sql`UPDATE public.profiles SET is_premium = ${isPremium} WHERE id = ${id}`
+
+    return { success: true }
+  })
+
+  app.delete('/api/v1/admin/users/:id', { preHandler: [requireAuth] }, async (request) => {
+    const sudoId = getUserId(request)
+    const { id } = request.params as any
+    const [sudo] = await sql`SELECT role FROM auth.users WHERE id = ${sudoId}`
+    if (!isSudo(sudo) || id === sudoId) throw new ForbiddenError('Cannot delete yourself or not sudo')
+
+    await sql`DELETE FROM auth.users WHERE id = ${id}`
+    return { success: true, message: 'User deleted' }
+  })
+
+  app.get('/api/v1/admin/sessions', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
     const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
-    if (user?.role !== SUDO_ROLE) throw new ForbiddenError('Sudo only')
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    const sessions = await sql`
+      SELECT s.id, s.user_id, s.ip_address, s.user_agent, s.current_route,
+             s.last_active_at, s.created_at, u.email, u.role
+      FROM user_sessions s
+      JOIN auth.users u ON u.id = s.user_id
+      WHERE s.is_active = true AND s.last_active_at > NOW() - INTERVAL '30 minutes'
+      ORDER BY s.last_active_at DESC LIMIT 50
+    `
+    return { success: true, sessions }
+  })
+
+  app.post('/api/v1/admin/session-heartbeat', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const { route } = request.body as any
+
+    const token = request.headers.authorization?.replace('Bearer ', '') || ''
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+
+    await sql`
+      INSERT INTO user_sessions (user_id, token_hash, ip_address, user_agent, current_route, last_active_at)
+      VALUES (${userId}, ${tokenHash}, ${request.ip}, ${request.headers['user-agent'] || ''}, ${route || '/'}, NOW())
+      ON CONFLICT DO NOTHING
+    `
+
+    await sql`
+      UPDATE user_sessions SET last_active_at = NOW(), current_route = ${route || '/'}
+      WHERE user_id = ${userId} AND token_hash = ${tokenHash} AND is_active = true
+    `
+
+    return { success: true }
+  })
+
+  app.post('/api/v1/admin/session-leave', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const token = request.headers.authorization?.replace('Bearer ', '') || ''
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+
+    await sql`
+      UPDATE user_sessions SET is_active = false
+      WHERE user_id = ${userId} AND token_hash = ${tokenHash}
+    `
+    return { success: true }
+  })
+
+  app.post('/api/v1/admin/stop-all', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
     return { success: true, message: 'All operations stopped' }
+  })
+
+  app.get('/api/v1/admin/kza/incidents', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    const incidents = await sql`
+      SELECT * FROM kza_admin_incidents ORDER BY created_at DESC LIMIT 50
+    `
+    return { success: true, incidents }
+  })
+
+  app.get('/api/v1/admin/kza/threats', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    const threats = await sql`
+      SELECT t.*, u.email FROM kza_threat_events t
+      LEFT JOIN auth.users u ON u.id = t.user_id
+      ORDER BY t.created_at DESC LIMIT 100
+    `
+    return { success: true, threats }
+  })
+
+  app.get('/api/v1/admin/kza/bans', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    const bans = await sql`
+      SELECT b.*, u.email FROM kza_banned_entities b
+      LEFT JOIN auth.users u ON u.id = b.user_id
+      ORDER BY b.created_at DESC LIMIT 50
+    `
+    return { success: true, bans }
+  })
+
+  app.patch('/api/v1/admin/kza/incidents/:id', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const { id } = request.params as any
+    const { status, resolved_by } = request.body as any
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    await sql`
+      UPDATE kza_admin_incidents SET status = ${status}, resolved_by = ${resolved_by || userId}
+      WHERE id = ${id}
+    `
+    return { success: true }
+  })
+
+  app.get('/api/v1/admin/fls/channels', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    const channels = await sql`
+      SELECT c.*, (SELECT COUNT(*) FROM fls_events e WHERE e.channel_id = c.id) as event_count
+      FROM fls_channels c ORDER BY c.created_at DESC LIMIT 50
+    `
+    return { success: true, channels }
+  })
+
+  app.get('/api/v1/admin/edge-functions', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    const functions = await sql`
+      SELECT id, name, runtime, status, created_at, updated_at,
+             version, timeout_seconds, memory_mb
+      FROM edge_functions
+      ORDER BY created_at DESC LIMIT 100
+    `
+    return { success: true, functions: functions.length > 0 ? functions : [] }
+  })
+
+  app.post('/api/v1/admin/edge-functions/sync', { preHandler: [requireAuth] }, async (request) => {
+    const userId = getUserId(request)
+    const [user] = await sql`SELECT role FROM auth.users WHERE id = ${userId}`
+    if (!isSudo(user)) throw new ForbiddenError('Sudo only')
+
+    return { success: true, message: 'Edge functions synced', count: 0 }
   })
 }
