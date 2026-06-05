@@ -76,7 +76,7 @@ function getPkgManagerInstall() {
   const os = getOS()
   if (os === 'termux') return 'pkg install -y'
   if (os === 'macos') return 'brew install'
-  if (os.includes('debian') || os.includes('ubuntu') || os === 'linux') return 'apt-get install -y'
+  if (os.includes('debian') || os.includes('ubuntu') || os === 'linux') return 'sudo apt-get install -y'
   return ''
 }
 
