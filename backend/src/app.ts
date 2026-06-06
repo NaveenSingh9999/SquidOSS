@@ -110,10 +110,23 @@ export async function buildApp() {
   }))
 
   app.setErrorHandler((error: any, request, reply) => {
+    const origin = request.headers.origin || config.cors.origin || '*'
+    reply.header('Access-Control-Allow-Origin', origin === true ? '*' : origin)
+    reply.header('Access-Control-Allow-Credentials', 'true')
+    reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+    reply.header('Access-Control-Allow-Headers', 'authorization, x-client-info, apikey, content-type, x-squidcloud-key, x-cbis-key, range')
+    if (request.method === 'OPTIONS') return reply.status(204).send()
     const statusCode = error.statusCode || 500
     const message = statusCode === 500 && !config.isDev ? 'Internal server error' : error.message
     if (statusCode === 500) app.log.error(error)
     reply.status(statusCode).send({ error: message, code: (error as any).code || 'INTERNAL_ERROR', success: false })
+  })
+
+  app.setNotFoundHandler((request, reply) => {
+    const origin = request.headers.origin || config.cors.origin || '*'
+    reply.header('Access-Control-Allow-Origin', origin === true ? '*' : origin)
+    reply.header('Access-Control-Allow-Credentials', 'true')
+    reply.status(404).send({ error: `Route ${request.method} ${request.url} not found`, code: 'NOT_FOUND', success: false })
   })
 
   app.setNotFoundHandler((request, reply) => {
