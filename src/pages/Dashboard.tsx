@@ -11,6 +11,8 @@ import {
   Loader2, CheckCircle, XCircle, Clock, ArrowLeft,
   LayoutGrid, LayoutList, Lock, Share2, MoreVertical,
 } from '@/lib/icon-map'
+import FileCard from '@/components/FileCard'
+import { EnterpriseFolderCard } from '@/components/ui/EnterpriseFolderCard'
 import { API_URL } from '@/lib/api-url'
 
 const token = () => localStorage.getItem('squidoss_token')
@@ -393,110 +395,6 @@ export default function Dashboard() {
     )
   }
 
-  const FolderCard = ({ folder }: { folder: FolderItem }) => (
-    <button onClick={() => goTo(folder.path)}
-      className="group relative overflow-hidden rounded-xl border border-border/40 bg-card/50 hover:bg-card hover:border-border/70 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-[2px] transition-all duration-[250ms] ease-out cursor-pointer text-left">
-      <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary/50" />
-      <div className="p-4 flex flex-col gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20 group-hover:scale-105 group-hover:bg-primary/15 transition-all duration-200">
-          <Folder className="w-5 h-5 text-primary" weight="light" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground/90 group-hover:text-foreground truncate leading-snug transition-colors">{folder.name}</p>
-          <p className="text-xs text-muted-foreground/70 mt-0.5">{timeAgo(folder.created_at)}</p>
-        </div>
-      </div>
-    </button>
-  )
-
-  const FileCard = ({ file, inTrash }: { file: FileItem; inTrash?: boolean }) => {
-    const Icon = getIcon(file.type)
-    const iconColor = getIconColor(file.type)
-    const isImage = file.type?.startsWith('image/')
-    const isFolder = false
-    const gridMaxNameLen = viewMode === 'grid' ? 22 : 40
-
-    if (viewMode === 'list') {
-      return (
-        <div className="group relative flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card/50 border border-border/40 hover:bg-accent/50 hover:border-border/70 transition-all duration-150 cursor-default">
-          <div className="flex items-center justify-center shrink-0 w-10 h-10 rounded-xl bg-muted/30 border border-border/20 group-hover:bg-muted/50 group-hover:border-border/40 transition-all">
-            <Icon className={`w-5 h-5 ${iconColor}`} weight="light" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate text-foreground/90 group-hover:text-foreground transition-colors">{file.name}</p>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="text-xs text-muted-foreground/70">{fmtBytes(file.size)}</span>
-              <span className="text-muted-foreground/20">·</span>
-              <span className="text-xs text-muted-foreground/70">{timeAgo(file.created_at)}</span>
-              {file.encrypted && (
-                <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Lock className="w-2.5 h-2.5" /> Encrypted
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-            {inTrash ? (
-              <>
-                <button onClick={() => handleRestore(file)} className="px-2 py-1 rounded-lg hover:bg-accent/50 text-xs text-muted-foreground hover:text-foreground border border-transparent hover:border-border/30 transition-all">Restore</button>
-                <button onClick={() => handlePermanentDelete(file)} className="px-2 py-1 rounded-lg hover:bg-red-500/10 text-xs text-red-400 border border-transparent hover:border-red-500/20 transition-all">Delete</button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => downloadWithProgress(file)} className="p-1.5 rounded-lg hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-all"><Download className="w-3.5 h-3.5" weight="light" /></button>
-                <button onClick={() => handleDelete(file)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 transition-all"><Trash2 className="w-3.5 h-3.5" weight="light" /></button>
-              </>
-            )}
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <div className="group relative rounded-xl border border-border/40 bg-card/50 hover:bg-card hover:border-border/70 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-[2px] transition-all duration-[250ms] ease-out overflow-hidden cursor-default">
-        {isImage ? (
-          <div className="h-32 bg-muted/30 overflow-hidden">
-            <img src={`${API_URL}/files/${file.id}/download`} alt={file.name}
-              className="w-full h-full object-cover" loading="lazy"
-              onError={e => { (e.target as HTMLElement).style.display = 'none' }} />
-          </div>
-        ) : (
-          <div className="h-32 flex items-center justify-center bg-muted/20">
-            <Icon className={`w-12 h-12 ${iconColor} opacity-30 group-hover:opacity-40 transition-opacity`} weight="light" />
-          </div>
-        )}
-        <div className="p-3 space-y-1.5">
-          <p className="text-sm font-medium truncate text-foreground/85 group-hover:text-foreground transition-colors" title={file.name}>
-            {file.name && file.name.length > gridMaxNameLen ? file.name.substring(0, gridMaxNameLen) + '…' : file.name}
-          </p>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
-            <span className="font-medium">{fmtBytes(file.size)}</span>
-            <div className="flex items-center gap-1 ml-auto">
-              {file.encrypted && (
-                <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Lock className="w-2 h-2" />
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-background/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end justify-end p-2 gap-1">
-          {inTrash ? (
-            <>
-              <button onClick={() => handleRestore(file)} className="px-2 py-1 rounded-lg bg-background/90 hover:bg-background text-xs text-foreground border border-border/30 backdrop-blur-sm">Restore</button>
-              <button onClick={() => handlePermanentDelete(file)} className="px-2 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-xs text-red-400 border border-red-500/20">Delete</button>
-            </>
-          ) : (
-            <>
-              <button onClick={() => downloadWithProgress(file)} className="p-1.5 rounded-lg bg-background/90 hover:bg-background border border-border/30 backdrop-blur-sm"><Download className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" weight="light" /></button>
-              <button onClick={() => handleDelete(file)} className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/20"><Trash2 className="w-3.5 h-3.5 text-red-400" weight="light" /></button>
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   const sidebarW = sidebarCollapsed ? 'w-14' : 'w-48'
   const activeTasks = progressTasks.filter(t => t.status === 'uploading' || t.status === 'downloading')
   const hasActiveTasks = activeTasks.length > 0
@@ -675,7 +573,14 @@ export default function Dashboard() {
                   <div className={viewMode === 'grid'
                     ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3'
                     : 'space-y-1'}>
-                    {folders.map(f => <FolderCard key={f.id} folder={f} />)}
+                    {folders.map(f => (
+                      <EnterpriseFolderCard
+                        key={f.id}
+                        folder={f}
+                        viewMode={viewMode}
+                        onOpen={() => goTo(f.path)}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -687,11 +592,27 @@ export default function Dashboard() {
                   )}
                   {viewMode === 'grid' ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                      {filtered.map(f => <FileCard key={f.id} file={f} inTrash={activeTab === 'trash'} />)}
+                      {filtered.map(f => (
+                        <FileCard
+                          key={f.id}
+                          file={f}
+                          viewMode={viewMode}
+                          onDownload={() => downloadWithProgress(f)}
+                          onDelete={() => activeTab === 'trash' ? handlePermanentDelete(f) : handleDelete(f)}
+                        />
+                      ))}
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      {filtered.map(f => <FileCard key={f.id} file={f} inTrash={activeTab === 'trash'} />)}
+                      {filtered.map(f => (
+                        <FileCard
+                          key={f.id}
+                          file={f}
+                          viewMode={viewMode}
+                          onDownload={() => downloadWithProgress(f)}
+                          onDelete={() => activeTab === 'trash' ? handlePermanentDelete(f) : handleDelete(f)}
+                        />
+                      ))}
                     </div>
                   )}
                 </div>
