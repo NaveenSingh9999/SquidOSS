@@ -348,12 +348,62 @@ export default function AccountSettings() {
         {/* Storage */}
         <Card className="border-border/30 bg-card/50 backdrop-blur-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-border/20 flex items-center gap-2">
-            <HardDrive className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold">Local Storage</span>
-            <span className="text-[9px] text-muted-foreground ml-auto">Auto-detected devices</span>
+            <Database className="w-4 h-4 text-primary" />
+            <span className="text-sm font-semibold">Storage</span>
+            <Button variant="outline" size="sm" className="text-xs h-7 gap-1 rounded-lg ml-auto"
+              onClick={() => navigate('/settings/providers')}>
+              <Server className="w-3 h-3" /> Providers
+            </Button>
           </div>
-          <div className="p-5">
-            <StorageDeviceWizard onConfigured={() => {}} compact />
+          <div className="p-5 space-y-4">
+            {/* Local Storage — device detection */}
+            <div className="rounded-xl bg-accent/20 p-4 border border-border/20">
+              <div className="flex items-center gap-2 mb-3">
+                <HardDrive className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium">Local Storage</span>
+                <span className="text-[9px] text-muted-foreground ml-auto">Auto-detected devices</span>
+              </div>
+              <StorageDeviceWizard onConfigured={() => {}} compact />
+            </div>
+
+            {/* External Providers */}
+            {providers.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Connected Providers ({providers.length})</p>
+                {providers.map(p => (
+                  <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-accent/20 border border-border/20">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-3.5 h-3.5 text-primary" />
+                      <div>
+                        <span className="text-xs font-medium capitalize">{p.provider_type}</span>
+                        {p.is_default && (
+                          <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary">Default</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!p.is_default && (
+                        <button onClick={() => setDefaultProvider(p.id)}
+                          className="text-[9px] text-muted-foreground hover:text-primary px-2 py-1 rounded border border-border/30">
+                          Set Default
+                        </button>
+                      )}
+                      <button onClick={() => removeProvider(p.id)}
+                        className="p-1 text-muted-foreground hover:text-destructive rounded-md hover:bg-destructive/10">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {providers.length === 0 && (
+              <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5 rounded-lg w-full"
+                onClick={() => navigate('/settings/providers')}>
+                <Server className="w-3 h-3" /> Add Storage Provider
+              </Button>
+            )}
           </div>
         </Card>
 

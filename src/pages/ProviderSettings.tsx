@@ -401,7 +401,53 @@ export default function ProviderSettings() {
           </Card>
         )}
 
+        {/* GitHub Repos (shown when GitHub provider exists) */}
+        {githubRepos.length > 0 && (
+          <Card className="border-border/30">
+            <CardHeader className="px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Github className="w-4 h-4" />
+                <CardTitle className="text-sm">GitHub Storage Repos</CardTitle>
+                <Badge variant="outline" className="text-[9px] h-5 ml-auto">
+                  res54 Distributed
+                </Badge>
+              </div>
+              <CardDescription className="text-[10px] mt-1">
+                These repos are used for distributed chunk storage by res54. Files are split, encrypted, and distributed across repos for redundancy.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                {githubRepos.map(repo => (
+                  <a key={repo.id} href={repo.repo_url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 p-2 rounded-lg border border-border/30 hover:border-border/60 hover:bg-accent/30 transition-colors group">
+                    <Github className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                    <span className="text-[10px] truncate flex-1">{repo.repo_name}</span>
+                    <ExternalLink className="w-2.5 h-2.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
+        {/* res54 Info */}
+        <Card className="border-border/30">
+          <CardHeader className="px-4 py-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Server className="w-4 h-4" />
+              res54 Distributed Storage
+            </CardTitle>
+            <CardDescription className="text-[10px] mt-1">
+              res54 splits files into encrypted chunks and distributes them across all available storage backends. Enable it per-provider above.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 text-[11px] text-muted-foreground space-y-1">
+            <p>For <strong>GitHub</strong>: chunks are stored across your 10 auto-created repos as separate branches/files.</p>
+            <p>For <strong>R2/S3</strong>: chunks are stored in the bucket with deterministic paths.</p>
+            <p>Files are reassembled on download using chunk metadata.</p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
