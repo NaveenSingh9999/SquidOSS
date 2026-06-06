@@ -129,10 +129,6 @@ export async function buildApp() {
     reply.status(404).send({ error: `Route ${request.method} ${request.url} not found`, code: 'NOT_FOUND', success: false })
   })
 
-  app.setNotFoundHandler((request, reply) => {
-    reply.status(404).send({ error: `Route ${request.method} ${request.url} not found`, code: 'NOT_FOUND', success: false })
-  })
-
   return app
 }
 

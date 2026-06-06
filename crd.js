@@ -142,11 +142,11 @@ async function install() {
   // npm deps
   if (!existsSync(resolve(BACKEND, 'node_modules'))) {
     log('Installing backend deps...')
-    await run(`${detectPM(BACKEND)} install`, BACKEND)
+    await npmInstallWithFix(BACKEND)
   }
   if (!existsSync(resolve(ROOT, 'node_modules'))) {
     log('Installing frontend deps...')
-    await run(`${detectPM(ROOT)} install`, ROOT)
+    await npmInstallWithFix(ROOT)
   }
 
   log('Dependencies installed')
@@ -402,6 +402,30 @@ async function buildNative() {
   }
 }
 
+const IS_ARM64 = process.arch === 'arm64' || process.arch === 'aarch64'
+const IS_ANDROID = process.platform === 'android'
+
+async function arm64Fix() {
+  if (!IS_ARM64 && !IS_ANDROID) return
+  const fixScript = resolve(SCRIPTS, 'arm64-fix.mjs')
+  if (existsSync(fixScript)) {
+    log('Applying ARM64 platform fixes...')
+    await run(`node "${fixScript}"`)
+  }
+}
+
+async function npmInstallWithFix(dir) {
+  const pm = detectPM(dir)
+  const isArm = IS_ARM64 || IS_ANDROID
+  if (isArm) {
+    log('ARM64 detected — using --ignore-scripts + platform fix')
+    await run(`${pm} install --ignore-scripts --legacy-peer-deps`, dir)
+    await arm64Fix()
+  } else {
+    await run(`${pm} install`, dir)
+  }
+}
+
 // ── Build ────────────────────────────────────────────────────
 async function build() {
   log('Building SquidOSS...')
@@ -410,11 +434,11 @@ async function build() {
 
   if (!existsSync(resolve(BACKEND, 'node_modules'))) {
     log('Installing backend deps...')
-    await run(`${detectPM(BACKEND)} install`, BACKEND)
+    await npmInstallWithFix(BACKEND)
   }
   if (!existsSync(resolve(ROOT, 'node_modules'))) {
     log('Installing frontend deps...')
-    await run(`${detectPM(ROOT)} install`, ROOT)
+    await npmInstallWithFix(ROOT)
   }
 
   await migrate()

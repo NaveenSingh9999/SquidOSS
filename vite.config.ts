@@ -1,19 +1,20 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
-import wasm from "vite-plugin-wasm";
-import topLevelAwait from "vite-plugin-top-level-await";
+// import wasm from "vite-plugin-wasm";
+// import topLevelAwait from "vite-plugin-top-level-await";
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0",
     port: 8080,
+    watch: {
+      ignored: ["**/node_modules/**", "**/.git/**", "/data/data/com.termux/files/home/**"],
+    },
   },
   plugins: [
-    wasm(),
-    topLevelAwait(),
     react(),
     mode === 'development' && componentTagger(),
   ].filter(Boolean),
@@ -38,8 +39,10 @@ export default defineConfig(({ mode }) => ({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['buffer', 'pdfjs-dist'],
+    include: ['buffer'],
     exclude: [
+      'framer-motion',
+      'pdfjs-dist',
       // Exclude all level-* packages that cause module externalization warnings
       'level-js',
       'levelup',
@@ -56,7 +59,7 @@ export default defineConfig(({ mode }) => ({
   assetsInclude: ['**/*.pdf', '**/*.wasm'],
   worker: {
     format: 'es',
-    plugins: () => [wasm(), topLevelAwait()]
+    plugins: () => []
   },
   base: '/',
   build: {

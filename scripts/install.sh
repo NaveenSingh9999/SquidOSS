@@ -45,7 +45,7 @@ install_system_deps() {
   case "$PLATFORM" in
     termux)
       pkg update -y
-      pkg install -y nodejs-lts postgresql redis git python make
+      pkg install -y nodejs-lts postgresql redis git python make binutils
       ;;
     debian)
       sudo apt-get update -qq
@@ -116,6 +116,9 @@ setup_launchers() {
 # ── Build ────────────────────────────────────────────────────
 build_squidoss() {
   print_step "Running build..."
+  if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    echo "  ARM64 detected — using platform-compatible build"
+  fi
   node crd.js build
 }
 

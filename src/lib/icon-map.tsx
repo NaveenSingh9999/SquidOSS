@@ -50,6 +50,7 @@ export const Copy = P.Copy as Icon;
 export const CornerDownLeft = P.ArrowBendLeftDown as Icon;
 export const Crown = P.Crown as Icon;
 export const Database = P.Database as Icon;
+export const Disc = P.Disc as Icon;
 export const Delete = P.Backspace as Icon;
 export const Dot = P.Dot as Icon;
 export const Download = P.Download as Icon;
