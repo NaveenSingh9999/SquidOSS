@@ -1,0 +1,78 @@
+{
+  "version": "2",
+  "project": "SquidOSS",
+  "services": {
+    "postgres": {
+      "command": "postgres -D .flect/data/pg -p 5432",
+      "port": 5432,
+      "replicas": 1,
+      "restart": "always",
+      "stop_signal": "SIGTERM",
+      "data_dirs": [".flect/data/pg"],
+      "health_check": {
+        "tcp_port": 5432,
+        "interval_secs": 5,
+        "timeout_secs": 5,
+        "retries": 3
+      },
+      "resources": {
+        "memory_mb": 256
+      }
+    },
+    "redis": {
+      "command": "redis-server --port 6379 --daemonize no --save '' --appendonly no",
+      "port": 6379,
+      "replicas": 1,
+      "restart": "always",
+      "health_check": {
+        "tcp_port": 6379,
+        "interval_secs": 5,
+        "timeout_secs": 5,
+        "retries": 3
+      },
+      "resources": {
+        "memory_mb": 128
+      }
+    },
+    "backend": {
+      "command": "node --import tsx src/server.ts",
+      "workdir": "backend",
+      "port": 3000,
+      "replicas": 1,
+      "restart": "always",
+      "depends_on": ["postgres", "redis"],
+      "env": {
+        "NODE_ENV": "development",
+        "PORT": "3000",
+        "HOST": "0.0.0.0"
+      },
+      "health_check": {
+        "http_url": "http://localhost:3000/health",
+        "interval_secs": 10,
+        "timeout_secs": 10,
+        "retries": 5
+      },
+      "resources": {
+        "memory_mb": 512
+      }
+    },
+    "frontend": {
+      "command": "npx vite --host 0.0.0.0 --port 8080",
+      "workdir": ".",
+      "port": 8080,
+      "replicas": 1,
+      "restart": "always",
+      "depends_on": ["backend"],
+      "env": {
+        "CHOKIDAR_USEPOLLING": "1",
+        "CHOKIDAR_INTERVAL": "5000"
+      },
+      "health_check": {
+        "http_url": "http://localhost:8080/",
+        "interval_secs": 10,
+        "timeout_secs": 10,
+        "retries": 5
+      }
+    }
+  }
+}

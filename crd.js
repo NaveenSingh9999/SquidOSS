@@ -20,6 +20,27 @@ const log = (...a) => console.log('[crd]', ...a)
 const warn = (...a) => console.warn('[crd]', ...a)
 const err = (...a) => console.error('[crd]', ...a)
 
+// flect detection — delegate when available
+function hasFlect() { return existsSync(resolve(ROOT, 'flect')) }
+
+function delegateToFlect() {
+  const cmds = ['start', 'stop', 'restart', 'ps', 'logs', 'status', 'run']
+  if (!cmds.includes(process.argv[2])) return false
+  if (!hasFlect()) return false
+  const flect = spawn(resolve(ROOT, 'flect'), process.argv.slice(2), { stdio: 'inherit' })
+  flect.on('close', code => process.exit(code ?? 0))
+  process.on('SIGINT', () => {})
+  process.on('SIGTERM', () => {})
+  setInterval(() => {}, 60000) // keep event loop alive
+  return true
+}
+
+if (delegateToFlect()) {
+  // Let flect handle it
+  const keepAlive = setInterval(() => {}, 60000)
+  setTimeout(() => clearInterval(keepAlive), 3600000)
+}
+
 function readPids() {
   try { return JSON.parse(readFileSync(PID_FILE, 'utf-8')) } catch { return {} }
 }

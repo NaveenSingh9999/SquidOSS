@@ -11,7 +11,9 @@ export default defineConfig(({ mode }) => ({
     host: "0.0.0.0",
     port: 8080,
     watch: {
-      ignored: ["**/node_modules/**", "**/.git/**", "/data/data/com.termux/files/home/**"],
+      usePolling: true,
+      interval: 5000,
+      ignored: ["**/node_modules/**", "**/.git/**", "**/.npm/**", "**/.icons/**", "**/.cache/**", "**/.config/**", "/data/data/com.termux/files/home/**", "/data/data/com.termux/files/usr/**"],
     },
   },
   plugins: [
@@ -41,7 +43,6 @@ export default defineConfig(({ mode }) => ({
   optimizeDeps: {
     include: ['buffer'],
     exclude: [
-      'framer-motion',
       'pdfjs-dist',
       // Exclude all level-* packages that cause module externalization warnings
       'level-js',
